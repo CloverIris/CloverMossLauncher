@@ -38,6 +38,7 @@ try {
         ...env,
         CLOVER_UI_SCALE: String(scale),
         CLOVER_UI_STUDIO_ONLY: process.argv.includes('--studio') ? '1' : '0',
+        CLOVER_UI_SSH_ONLY: process.argv.includes('--ssh') ? '1' : '0',
         ...(screenshots ? { CLOVER_UI_SCREENSHOTS: resolve(screenshots) } : {}),
       },
       stdio: 'inherit',

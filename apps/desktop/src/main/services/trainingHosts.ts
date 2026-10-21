@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ComputeDevice, ManagedHost, Settings, TrainingHost } from '@shared/types'
+import type { ComputeDevice, ManagedHost, Settings, SshAuthMethod, TrainingHost } from '@shared/types'
 import { paths } from '../lib/paths'
 import { run } from '../lib/run'
 import { listDevices } from './devices'
 import { probeHost } from './ssh'
+import { hasSshPassword, removeSshPassword, saveSshPassword } from './sshCredentials'
+import { trustUnknownHost } from './sshHostKeys'
 
 const FILE = () => join(paths.root(), 'hosts.json')
 const LEGACY_FILE = () => join(paths.root(), 'training-hosts.json')
@@ -30,11 +32,7 @@ function load(): TrainingHost[] {
 }
 
 function persist(): void {
-  try {
-    writeFileSync(FILE(), JSON.stringify(load(), null, 2), 'utf8')
-  } catch {
-    // best effort
-  }
+  writeFileSync(FILE(), JSON.stringify(load(), null, 2), 'utf8')
 }
 
 export function listTrainingHosts(settings: Settings): TrainingHost[] {
@@ -56,7 +54,9 @@ export interface SaveTrainingHostInput {
   host: string
   user: string
   port?: number
+  authMethod?: SshAuthMethod
   identityFile?: string
+  password?: string
   trainerRoot: string
   instanceRoot?: string
   modelsRoot?: string
@@ -65,14 +65,24 @@ export interface SaveTrainingHostInput {
 export function saveTrainingHost(input: SaveTrainingHostInput): TrainingHost {
   const hosts = load()
   const existing = input.id ? hosts.find((host) => host.id === input.id) : undefined
+  const authMethod = input.authMethod ?? existing?.authMethod ?? 'identityFile'
+  const id = existing?.id ?? `ssh-${randomUUID().slice(0, 8)}`
+  if (authMethod === 'password') {
+    if (input.password) saveSshPassword(id, input.password)
+    else if (!hasSshPassword(id)) throw new Error('请输入 SSH 密码')
+  } else {
+    removeSshPassword(id)
+  }
   const next: TrainingHost = {
-    id: existing?.id ?? `ssh-${randomUUID().slice(0, 8)}`,
+    id,
     name: input.name.trim() || input.host,
     kind: 'ssh',
     host: input.host.trim(),
     user: input.user.trim(),
     port: input.port ?? 22,
-    identityFile: input.identityFile?.trim() || undefined,
+    authMethod,
+    identityFile: authMethod === 'identityFile' ? (input.identityFile ?? existing?.identityFile)?.trim() || undefined : undefined,
+    hasPassword: authMethod === 'password',
     trainerRoot: input.trainerRoot.trim(),
     instanceRoot: input.instanceRoot?.trim() || undefined,
     modelsRoot: input.modelsRoot?.trim() || undefined,
@@ -102,7 +112,13 @@ export async function testTrainingHost(settings: Settings, id: string): Promise<
     }
   }
   try {
-    const probe = await probeHost(host)
+    let probe
+    try {
+      probe = await probeHost(host)
+    } catch (error) {
+      if (!(await trustUnknownHost(host, error))) throw error
+      probe = await probeHost(host)
+    }
     Object.assign(host, {
       status: 'ok',
       lastCheckedAt: new Date().toISOString(),
@@ -136,6 +152,7 @@ export function updateTrainingHostVersions(settings: Settings, id: string, versi
 }
 
 export function removeTrainingHost(id: string): void {
+  removeSshPassword(id)
   remote = load().filter((host) => host.id !== id)
   persist()
 }

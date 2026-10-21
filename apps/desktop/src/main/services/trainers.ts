@@ -9,7 +9,7 @@ import { startTrainingJob } from './supervisor'
 import { allRemoteVersions, remoteSetup } from './remoteTrainer'
 import { getTrainingHost } from './trainingHosts'
 import { checkBareMirror } from './gitHealth'
-import { posixQuote, sshArgs, sshCommand, sshExec } from './ssh'
+import { posixQuote, sshArgs, sshCommand, sshEnv, sshExec } from './ssh'
 import { hasUv, parseDepsFromPyproject, pickPython, venvPython } from './runtimes'
 import {
   createTrainerWorktree,
@@ -480,13 +480,14 @@ async function startRemoteTrainerRun(settings: Settings, input: TrainerRunInput,
       name: `Kohaku ${input.action === 'export' ? '导出' : '采样'} · ${host.name}`,
       cwd: process.cwd(),
       command: sshCommand(),
+      env: sshEnv(host),
       args: sshArgs(host, [remoteSetup(host), `VERSION="$VERSIONS/${version.id}"`, `bash "$VERSION/.clover-${input.action}.sh"`].join('\n')),
       totalSteps: 0,
       runName,
       action: input.action,
       weights: input.weights,
       algo: input.algo,
-      cancelCommand: { command: sshCommand(), args: sshArgs(host, [remoteSetup(host), `VERSION="$VERSIONS/${version.id}"`, 'if [ -f "$VERSION/.clover.pid" ]; then kill -TERM "$(cat "$VERSION/.clover.pid")" 2>/dev/null || true; fi'].join('\n')) },
+      cancelCommand: { command: sshCommand(), env: sshEnv(host), args: sshArgs(host, [remoteSetup(host), `VERSION="$VERSIONS/${version.id}"`, 'if [ -f "$VERSION/.clover.pid" ]; then kill -TERM "$(cat "$VERSION/.clover.pid")" 2>/dev/null || true; fi'].join('\n')) },
     })
   }
   const configPath = `configs/user/${runName}.py`
@@ -566,10 +567,11 @@ async function startRemoteTrainerRun(settings: Settings, input: TrainerRunInput,
     name: `Kohaku ${input.action === 'train' ? '训练' : input.action} · ${host.name}`,
     cwd: process.cwd(),
     command: sshCommand(),
+    env: sshEnv(host),
     args: sshArgs(host, start),
     totalSteps: input.action === 'train' ? input.steps : 0,
     runName,
     action: input.action,
-    cancelCommand: { command: sshCommand(), args: sshArgs(host, cancel) },
+    cancelCommand: { command: sshCommand(), args: sshArgs(host, cancel), env: sshEnv(host) },
   })
 }

@@ -162,7 +162,7 @@ Project 管理是 Creator 窗口内的一级入口：
 - 提供入口：「部署实例」「打开终端」「在训练中使用」，但不在这里复制启动器或
   训练器的完整表单；
 - 训练页的 SSH host CRUD 迁移到这里；`training-hosts.json` 做一次性迁移，保留 ID；
-- 不存密码；继续使用系统 OpenSSH、密钥/agent、严格 host key 校验。
+- 使用系统 OpenSSH，支持 Identity file/agent、系统安全存储加密的密码和无验证，按设备保存登录方式；保持严格 host key 校验，首次连接通过指纹确认建立信任。
 
 Instance 仍由启动器管理，设备管理器只提供“算力与连接”。这样不会出现第二个启动器。
 

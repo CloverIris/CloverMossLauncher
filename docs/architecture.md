@@ -418,12 +418,14 @@ trainerRoot/
 
 ### 13.4 SSH
 
-- host 配置持久化到 `hosts.json`（旧 `training-hosts.json` 自动迁移）；
-- 系统 OpenSSH + 密钥/agent + `StrictHostKeyChecking=yes` + `BatchMode=yes`；
+- host 配置及每台设备最后保存的登录方式持久化到 `hosts.json`（旧 `training-hosts.json` 自动迁移）；
+- Windows 按 PATH、Git 安装注册表和常见安装目录自动发现 Git for Windows，优先使用同目录的 ssh/scp/ssh-keyscan；缺少完整工具组时回退到系统 OpenSSH，非 Windows 继续使用系统工具；
+- 支持 Identity file/agent、密码和无验证；密码由系统安全存储加密保存，askpass 分别适配 Git 的 MSYS OpenSSH 和 Windows 原生 OpenSSH；
+- 保持 `StrictHostKeyChecking=yes`；测试连接遇到未知主机时显示 SHA256 指纹，用户确认后写入应用数据目录的 `ssh/known_hosts` 并重试，同时读取系统用户的 known_hosts；已变化的主机密钥不自动信任；
 - host probe 读取 uname / nvidia-smi / git / uv / python / root；
 - 远端 mirror、worktree、版本、venv、doctor、train/export 命令已接；
 - 远端训练通过本地 `ssh` 子进程进入同一 Job 表；取消时再发一条 ssh kill PID；
-- **仅在 fake ssh 下验证**；真实 host、host key、远端权限/网络未验收。
+- Windows 本地 SSH 服务已验证未知 ED25519 密钥确认、信任记录重载、三种登录方式及密码 SCP；真实 GPU host 的远端权限/训练环境仍待验收。
 
 ## 14. UI 壳与主题
 

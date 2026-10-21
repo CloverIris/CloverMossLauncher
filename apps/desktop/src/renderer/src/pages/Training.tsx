@@ -394,7 +394,7 @@ export function TrainingPage(): React.JSX.Element {
             })}
           </div>
           <p className="mt-2 text-[9px] leading-4 text-[var(--color-text-tertiary)]">
-            SSH 使用系统 OpenSSH + 密钥/agent + 严格 known_hosts；先“测试连接”；远端版本/环境/训练代码已接，真实 host 未验收。
+            SSH 登录方式沿用设备管理器的设置；先“测试连接”并确认首次连接的主机密钥指纹。
           </p>
         </Card>
       </div>

@@ -327,6 +327,7 @@ export interface DownloadTask {
 }
 
 export type TrainingHostKind = 'local' | 'ssh'
+export type SshAuthMethod = 'identityFile' | 'password' | 'none'
 export type TrainerChannel = 'stable' | 'experimental' | 'custom'
 export type TrainerRuntimeState = 'missing' | 'created' | 'installing' | 'ready' | 'error'
 
@@ -337,7 +338,9 @@ export interface TrainingHost {
   host?: string
   user?: string
   port?: number
+  authMethod?: SshAuthMethod
   identityFile?: string
+  hasPassword?: boolean
   trainerRoot: string
   /** Remote MOSS instance worktrees; used by the device manager and remote inference. */
   instanceRoot?: string
