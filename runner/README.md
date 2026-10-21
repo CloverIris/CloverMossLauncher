@@ -1,4 +1,4 @@
-# CloverMoss runner
+# MossStudio runner
 
 薄编排层，不是推理引擎。它读取 `job.json`，加载**实例目录里的官方 MOSS-Image 代码**，
 跑一次生成，把阶段、进度、结果和错误写成 NDJSON。

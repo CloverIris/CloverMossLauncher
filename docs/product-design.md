@@ -1,4 +1,4 @@
-# 产品设计 · CloverMoss Launcher
+# 产品设计 · MossStudio
 
 - 文档版本：v0.4（2026-10-19）
 - 应用版本：`0.1.0`（开发版）

@@ -7,7 +7,7 @@
 ## 0. 已确认（2026-10-19）
 
 1. **发布源**：GitHub Release 的 latest 资产
-   `https://github.com/CloverIris/MossDesktop/releases/latest/download/release.md`；
+   `https://github.com/CloverIris/MossStudio/releases/latest/download/release.md`；
    开发/离线回退本地 `release/release.md`、raw、缓存；beta 使用 pinned prerelease。
 2. **文档格式**：人可读正文 + 固定的 `json clover-release` fenced block。
 3. **更新执行**：分阶段。本轮做检测 → 弹窗 → 用户批准 → 下载 → sha256 校验 →
@@ -57,11 +57,11 @@
 
 ### 3.1 发布源
 
-- 仓库：`CloverIris/MossDesktop`。
+- 仓库：`CloverIris/MossStudio`。
 - 稳定版使用 GitHub Release 的 latest 资产：
 
   ```
-  https://github.com/CloverIris/MossDesktop/releases/latest/download/release.md
+  https://github.com/CloverIris/MossStudio/releases/latest/download/release.md
   ```
 
 - 开发/离线回退：
@@ -82,7 +82,7 @@
 2. 一个带固定标记的 fenced JSON 块，作为应用解析的唯一机器数据：
 
 ````markdown
-# CloverMoss Launcher 0.2.0
+# MossStudio 0.2.0
 
 本次更新……
 
@@ -90,26 +90,26 @@
 {
   "schema_version": 2,
   "app": {
-    "name": "CloverMoss Launcher",
+    "name": "MossStudio",
     "channel": "stable",
     "version": "0.2.0",
     "min_supported": "0.1.0",
     "published_at": "2026-10-20T00:00:00Z",
-    "notes_url": "https://github.com/CloverIris/MossDesktop/releases/tag/v0.2.0"
+    "notes_url": "https://github.com/CloverIris/MossStudio/releases/tag/v0.2.0"
   },
   "installers": [
     {
       "platform": "darwin",
       "arch": "arm64",
       "kind": "dmg",
-      "url": "https://github.com/.../CloverMoss-0.2.0-arm64.dmg",
+      "url": "https://github.com/.../MossStudio-0.2.0-arm64.dmg",
       "sha256": "…",
       "size_bytes": 123456789
     }
   ],
   "catalog": {
     "updated_at": "2026-10-20T00:00:00Z",
-    "models_url": "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/models.json",
+    "models_url": "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/models.json",
     "models_sha256": "…"
   },
   "announcements": [

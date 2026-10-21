@@ -23,7 +23,7 @@ import {
   remoteCommits as remoteMossCommits,
   remoteRoots,
 } from './services/remoteInstances'
-import { getCatalog, deleteModel, importModelFolder, listDownloads, pauseDownload, startDownload, installBundle } from './services/models'
+import { cancelDownload, getCatalog, deleteModel, importModelFolder, listDownloads, pauseDownload, startDownload, installBundle } from './services/models'
 import { galleryDetail, listGallery, revealInFolder } from './services/gallery'
 import { cancelJob, getJob, getJobLogs, inputJob, listJobs, startJob } from './services/supervisor'
 import { clearDiagnostics, dismissDiagnostic, listDiagnostics } from './services/diagnostics'
@@ -103,7 +103,7 @@ function handle<T>(channel: string, schema: ZodType | null, fn: (input: any) => 
 
 export function registerIpc(): void {
   handle(Ipc.appInfo, null, () => ({
-    name: 'CloverMoss Launcher',
+    name: 'MossStudio',
     version: app.getVersion(),
     electron: process.versions.electron ?? '',
     chrome: process.versions.chrome ?? '',
@@ -404,6 +404,11 @@ export function registerIpc(): void {
 
   handle(Ipc.modelPause, schemas.modelPause, ({ taskId }) => {
     pauseDownload(taskId)
+    return true
+  })
+
+  handle(Ipc.modelCancel, schemas.modelPause, async ({ taskId }) => {
+    await cancelDownload(taskId)
     return true
   })
 

@@ -1,4 +1,4 @@
-# 架构 · CloverMoss Launcher
+# 架构 · MossStudio
 
 - 文档版本：v0.4（2026-10-19）
 - 应用版本：`0.1.0`
@@ -13,7 +13,7 @@
 
 ## 1. 范围与硬边界
 
-CloverMoss Launcher 是 Electron 桌面编排器：
+MossStudio 是 Electron 桌面编排器：
 
 - 管理 MOSS-Image 的 git 版本、Python 运行时、模型/适配器、启动参数和进程；
 - 自身**不实现**模型图、kernel、量化运行时、采样器；

@@ -65,6 +65,8 @@ function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [projectName, setProjectName] = useState('MossStudio Project')
   const [projectId, setProjectId] = useState('')
+  const [seriesId, setSeriesId] = useState('')
+  const [page, setPage] = useState(1)
   const [gallery, setGallery] = useState<GalleryItem[]>([])
 
   const loaded = useMemo(() => Boolean(bootstrap), [bootstrap])
@@ -107,6 +109,8 @@ function App(): React.JSX.Element {
       if (!project) return
       setProjectId(project.id)
       setProjectName(project.name)
+      setSeriesId(project.seriesId ?? '')
+      setPage(project.page ?? 1)
       setPrompt(project.prompt)
       setNegative(project.negative)
       setSeed(project.seed)
@@ -203,6 +207,8 @@ function App(): React.JSX.Element {
           steps,
           cfg,
           instanceId: instanceId || undefined,
+          seriesId: seriesId || undefined,
+          page,
         }),
       })
       setProjectId(saved.id)
@@ -260,13 +266,18 @@ function App(): React.JSX.Element {
           >
             <option value="">新草稿</option>
             {bootstrap?.projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name} · {project.layerCount} 层</option>
+              <option key={project.id} value={project.id}>{project.name}{project.page ? ` · 第${project.page}页` : ''} · {project.layerCount} 层</option>
             ))}
           </select>
         </label>
+        <label className="w-[110px] space-y-1">
+          <span className="text-[10px] text-[var(--color-text-tertiary)]">系列</span>
+          <input value={seriesId} onChange={(event) => setSeriesId(event.target.value)} placeholder="可选" className="app-input w-full" />
+        </label>
+        <span className="pb-2 text-[9px] text-[var(--color-text-tertiary)]">第 {page} 页</span>
         <button
           type="button"
-          onClick={() => { setProjectId(''); setProjectName('MossStudio Project'); setPrompt(''); setNegative(''); setDraft(exampleDraft()) }}
+          onClick={() => { setProjectId(''); setProjectName('MossStudio Project'); setSeriesId(''); setPage(1); setPrompt(''); setNegative(''); setDraft(exampleDraft()) }}
           className="rounded border border-[var(--color-border-subtle)] px-2.5 py-2 text-[10px] text-[var(--color-text-secondary)]"
         >
           新建

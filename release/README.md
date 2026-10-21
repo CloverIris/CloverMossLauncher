@@ -1,6 +1,6 @@
-# CloverMoss Launcher 开发版 0.1.0
+# MossStudio 开发版 0.1.0
 
-这是 CloverMoss Launcher 的内测公告。它来自仓库的 `release/README.md`，
+这是 MossStudio 的内测公告。它来自仓库的 `release/README.md`，
 启动器会把它渲染在首页与「公告」页。
 
 > 开发版能力边界以 [docs/status.md](../docs/status.md) 为准。代码路径存在但未
@@ -92,7 +92,7 @@
 
 1. 先看「诊断」页与实例详情里的运行时日志；
 2. 在诊断页导出诊断信息；
-3. 反馈：[GitHub Issues](https://github.com/CloverIris/MossDesktop/issues)。
+3. 反馈：[GitHub Issues](https://github.com/CloverIris/MossStudio/issues)。
 
 ---
 

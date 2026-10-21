@@ -211,7 +211,7 @@ launcher ──spawn──> python -m clovermoss_trainer_bridge --job job.json
 ## 6. 磁盘布局
 
 ```
-~/Library/Application Support/CloverMoss/     # macOS
+~/Library/Application Support/MossStudio/     # macOS
   models/<bundle-id>/...
   adapters/
   outputs/

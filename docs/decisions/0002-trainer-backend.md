@@ -10,7 +10,7 @@
 
 - **仍然不 vendor、不作为 submodule、安装包不包含上游代码**；
 - 允许启动器在用户配置的 `trainerRoot` 里 **runtime clone** 上游仓库，建 bare mirror + per-commit worktree；
-- 训练器以 **独立的 Kohaku Trainer（External）窗口** 出现，主产品仍叫 CloverMoss；
+- 训练器以 **独立的 Kohaku Trainer（External）窗口** 出现，主产品仍叫 MossStudio；
 - 环境按 lock hash 管理，但只安装到 trainerRoot 下；推理与训练环境隔离；
 - 本机 CUDA 训练通过 `startTrainingJob` 进入共享终端，解析 step/loss；
 - SSH 训练主机代码路径已接入，真实 host 验收在下一阶段；同一 host 模型。
@@ -56,7 +56,7 @@
 
 1. **许可**：第 10 条不是"署名"而是"改名"——只要我们的产品"incorporates"它，
    就必须在**产品名/包名/主品牌**里出现 "Kohaku"。本仓库是 MIT、品牌是
-   CloverMoss，submodule 会把这条义务带进整个发布物，且未来作者可改许可。
+   MossStudio，submodule 会把这条义务带进整个发布物，且未来作者可改许可。
    即使只作为可选功能，也需要法务确认"incorporate"的边界。
 2. **平台**：它没有 macOS 后端。作为 submodule，每个 macOS 开发者 clone 后都会
    拉到几 GB 的 CUDA 训练代码与配置，却一行都跑不了。

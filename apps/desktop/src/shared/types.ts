@@ -120,6 +120,8 @@ export interface Settings {
   hfEndpoint: string | null
   modelsRoot: string | null
   pythonPath: string | null
+  torchBackend: 'auto' | 'cpu' | 'cuda'
+  torchIndex: string | null
   autoCheckUpdates: boolean
   desktopNotifications: boolean
   lanWebEnabled: boolean
@@ -226,6 +228,7 @@ export interface InstanceInfo {
 }
 
 export interface RuntimeInfo {
+  torchIndex?: string | null
   id: string
   instanceId: string
   instanceIds: string[]
@@ -308,7 +311,7 @@ export interface Catalog {
   source: 'local' | 'remote' | 'cache' | 'builtin'
 }
 
-export type DownloadState = 'queued' | 'running' | 'verifying' | 'paused' | 'done' | 'error'
+export type DownloadState = 'queued' | 'running' | 'verifying' | 'paused' | 'done' | 'error' | 'canceled'
 
 export interface DownloadTask {
   id: string
@@ -674,6 +677,8 @@ export interface ProjectDocument {
   cfg: number
   instanceId?: string
   backgroundPath?: string
+  seriesId?: string
+  page?: number
   createdAt: string
   updatedAt: string
 }
@@ -684,5 +689,7 @@ export interface ProjectSummary {
   width: number
   height: number
   layerCount: number
+  seriesId?: string
+  page?: number
   updatedAt: string
 }

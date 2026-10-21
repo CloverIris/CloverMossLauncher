@@ -76,6 +76,7 @@ export const Ipc = {
   modelBundleInstall: 'models:install-bundle',
   instanceModelBinding: 'instances:model-binding',
   modelPause: 'models:pause',
+  modelCancel: 'models:cancel',
   modelDelete: 'models:delete',
   downloadsList: 'downloads:list',
   jobStart: 'jobs:start',

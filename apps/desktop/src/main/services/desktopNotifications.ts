@@ -42,7 +42,7 @@ export function pushLocalNotification(input: LocalNotificationInput): boolean {
 
 export function pushTestNotification(): boolean {
   return pushLocalNotification({
-    title: 'CloverMoss 通知测试',
+    title: 'MossStudio 通知测试',
     body: '本地系统通知已启用。任务完成或失败时会在这里提醒。',
     windowKind: 'launcher',
     route: '/settings',

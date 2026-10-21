@@ -27,7 +27,7 @@ function safeVersion(version: string): string {
 }
 
 function installerPath(version: string, installer: ReleaseInstaller): string {
-  let name = `CloverMoss-${safeVersion(version)}.${installer.kind}`
+  let name = `MossStudio-${safeVersion(version)}.${installer.kind}`
   try {
     const candidate = basename(new URL(installer.url).pathname)
     if (candidate && candidate !== '/') name = candidate.replace(/[^A-Za-z0-9._-]/g, '-')
@@ -92,7 +92,7 @@ export async function downloadUpdate(
 
   try {
     const response = await fetch(installer.url, {
-      headers: { 'user-agent': `CloverMoss-Launcher/${app.getVersion()}` },
+      headers: { 'user-agent': `MossStudio-Launcher/${app.getVersion()}` },
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`下载失败：HTTP ${response.status}`)

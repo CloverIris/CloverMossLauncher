@@ -37,6 +37,8 @@ function summary(project: ProjectDocument): ProjectSummary {
     width: project.width,
     height: project.height,
     layerCount: project.layers.length,
+    seriesId: project.seriesId,
+    page: project.page,
     updatedAt: project.updatedAt,
   }
 }
@@ -72,6 +74,8 @@ export interface SaveProjectInput {
   cfg: number
   instanceId?: string
   backgroundPath?: string
+  seriesId?: string
+  page?: number
 }
 
 export function saveProject(input: SaveProjectInput): ProjectDocument {
@@ -101,6 +105,8 @@ export function saveProject(input: SaveProjectInput): ProjectDocument {
     cfg: input.cfg,
     instanceId: input.instanceId,
     backgroundPath,
+    seriesId: input.seriesId?.trim() || existing?.seriesId || undefined,
+    page: input.page ?? existing?.page ?? 1,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }

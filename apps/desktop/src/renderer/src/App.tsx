@@ -122,7 +122,7 @@ function CreatorShell(): React.JSX.Element {
       <div className="flex min-h-0 flex-1">
         <CreatorSidebar />
         <main className="content-surface min-w-0 flex-1 overflow-y-auto" style={backgroundStyle}>
-          <MotionPanel transitionKey={location.pathname} className="mx-auto w-full max-w-[1180px] px-6 py-5">
+          <MotionPanel transitionKey={location.pathname} className="mx-auto w-full max-w-[1500px] px-5 py-4">
             <ErrorBoundary>
               <Routes>
                 <Route path="/studio" element={<StudioPage />} />
@@ -168,7 +168,7 @@ function DevicesShell(): React.JSX.Element {
   const backgroundStyle = useAppBackground()
   return (
     <div className="app-shell flex h-full flex-col text-[var(--color-text)]">
-      <AppTitlebar kind="devices" appName="CloverMoss Devices" />
+      <AppTitlebar kind="devices" appName="MossStudio Devices" />
       <div className="min-h-0 flex-1 overflow-y-auto" style={backgroundStyle}>
         <MotionPanel transitionKey="devices" className="mx-auto w-full max-w-[1100px] px-6 py-5">
           <ErrorBoundary>

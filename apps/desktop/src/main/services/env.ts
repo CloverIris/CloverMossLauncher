@@ -310,7 +310,7 @@ export async function scanEnvironment(
       label: '操作系统',
       status: 'ok',
       value: `${os.type()} ${os.release()} · ${process.arch}`,
-      detail: 'CloverMoss V1 优先支持 macOS arm64，Windows 版本在后续里程碑。',
+      detail: 'MossStudio V1 优先支持 macOS arm64，Windows 版本在后续里程碑。',
     },
     {
       id: 'memory',

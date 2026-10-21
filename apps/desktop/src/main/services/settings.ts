@@ -12,6 +12,8 @@ export const DEFAULT_SETTINGS: Settings = {
   hfEndpoint: null,
   modelsRoot: null,
   pythonPath: null,
+  torchBackend: 'auto',
+  torchIndex: null,
   autoCheckUpdates: true,
   desktopNotifications: true,
   lanWebEnabled: false,

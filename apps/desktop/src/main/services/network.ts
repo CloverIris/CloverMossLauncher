@@ -9,7 +9,7 @@ interface ProbeTarget {
 }
 
 const GITHUB = 'https://github.com'
-const RAW_BASE = 'https://raw.githubusercontent.com/CloverIris/MossDesktop/main'
+const RAW_BASE = 'https://raw.githubusercontent.com/CloverIris/MossStudio/main'
 const MANIFEST_PATH = '/release/manifest.json'
 
 const TARGETS: ProbeTarget[] = [
@@ -67,9 +67,9 @@ const TARGETS: ProbeTarget[] = [
   {
     id: 'jsdelivr',
     label: 'jsDelivr',
-    url: `https://cdn.jsdelivr.net/gh/CloverIris/MossDesktop@main${MANIFEST_PATH}`,
+    url: `https://cdn.jsdelivr.net/gh/CloverIris/MossStudio@main${MANIFEST_PATH}`,
     category: 'manifest',
-    value: 'https://cdn.jsdelivr.net/gh/CloverIris/MossDesktop@main',
+    value: 'https://cdn.jsdelivr.net/gh/CloverIris/MossStudio@main',
   },
 ]
 
@@ -86,7 +86,7 @@ async function probe(target: ProbeTarget, timeoutMs = 3500): Promise<NetworkProb
     const response = await fetch(target.url, {
       method: 'GET',
       redirect: 'follow',
-      headers: { 'user-agent': 'CloverMoss-Launcher/0.1' },
+      headers: { 'user-agent': 'MossStudio-Launcher/0.1' },
       signal: AbortSignal.timeout(timeoutMs),
     })
     await response.body?.cancel()

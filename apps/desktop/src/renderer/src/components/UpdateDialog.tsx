@@ -65,7 +65,7 @@ export function UpdateDialog(): React.JSX.Element | null {
       return
     }
     void call(Ipc.openExternal, {
-      url: 'https://github.com/CloverIris/MossDesktop/releases',
+      url: 'https://github.com/CloverIris/MossStudio/releases',
     })
   }
 

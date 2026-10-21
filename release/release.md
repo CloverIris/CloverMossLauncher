@@ -1,4 +1,4 @@
-# CloverMoss Launcher 0.1.0
+# MossStudio 0.1.0
 
 > 本文件由 `node tools/release-md.mjs` 从 `release/manifest.json` 与
 > `release/models.json` 生成；请勿直接手改。发布时把本文件作为 GitHub Release
@@ -45,7 +45,7 @@ _当前发布未附带安装包。_
 
 ## 公告
 
-### CloverMoss Launcher 内测开始
+### MossStudio 内测开始
 
 > info · 2026-10-19T02:00:00Z
 
@@ -53,7 +53,7 @@ _当前发布未附带安装包。_
 
 ## 发布说明
 
-这是 CloverMoss Launcher 的内测公告。它来自仓库的 `release/README.md`，
+这是 MossStudio 的内测公告。它来自仓库的 `release/README.md`，
 启动器会把它渲染在首页与「公告」页。
 
 > 开发版能力边界以 [docs/status.md](../docs/status.md) 为准。代码路径存在但未
@@ -128,7 +128,7 @@ _当前发布未附带安装包。_
 
 1. 先看「诊断」页与实例详情里的运行时日志；
 2. 在诊断页导出诊断信息；
-3. 反馈：[GitHub Issues](https://github.com/CloverIris/MossDesktop/issues)。
+3. 反馈：[GitHub Issues](https://github.com/CloverIris/MossStudio/issues)。
 
 ---
 
@@ -138,12 +138,12 @@ _当前发布未附带安装包。_
 {
   "schema_version": 2,
   "app": {
-    "name": "CloverMoss Launcher",
+    "name": "MossStudio",
     "channel": "stable",
     "version": "0.1.0",
     "min_supported": "0.1.0",
     "published_at": "2026-10-19T02:00:00Z",
-    "notes_url": "https://github.com/CloverIris/MossDesktop/releases"
+    "notes_url": "https://github.com/CloverIris/MossStudio/releases"
   },
   "installers": [],
   "home": {
@@ -153,15 +153,15 @@ _当前发布未附带安装包。_
   },
   "catalog": {
     "updated_at": "2026-10-19T09:48:26Z",
-    "models_url": "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/models.json",
+    "models_url": "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/models.json",
     "models_sha256": "73ecc164131b30dda905be527af483735342d7677d8724b8e65e4b9419dc3941"
   },
   "announcements": [
     {
       "id": "2026-10-launch",
       "level": "info",
-      "title": "CloverMoss Launcher 内测开始",
-      "body_url": "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/README.md",
+      "title": "MossStudio 内测开始",
+      "body_url": "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/README.md",
       "starts_at": "2026-10-19T02:00:00Z",
       "ends_at": null,
       "dismissible": true,

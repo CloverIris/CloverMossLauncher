@@ -45,9 +45,9 @@ const EMPTY_FORM: HostForm = {
   identityFile: '',
   password: '',
   hasPassword: false,
-  trainerRoot: '~/CloverMossTrainer',
-  instanceRoot: '~/CloverMoss/instances',
-  modelsRoot: '~/CloverMoss/models',
+  trainerRoot: '~/MossStudioTrainer',
+  instanceRoot: '~/MossStudio/instances',
+  modelsRoot: '~/MossStudio/models',
 }
 
 const AUTH_METHODS: Array<{ value: SshAuthMethod; label: string }> = [
@@ -157,8 +157,8 @@ export function DevicesPage(): React.JSX.Element {
       password: '',
       hasPassword: host.hasPassword ?? false,
       trainerRoot: host.trainerRoot,
-      instanceRoot: host.instanceRoot ?? '~/CloverMoss/instances',
-      modelsRoot: host.modelsRoot ?? '~/CloverMoss/models',
+      instanceRoot: host.instanceRoot ?? '~/MossStudio/instances',
+      modelsRoot: host.modelsRoot ?? '~/MossStudio/models',
     })
     setHostOpen(true)
   }

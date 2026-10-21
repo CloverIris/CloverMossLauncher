@@ -14,6 +14,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  X,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Ipc } from '@shared/channels'
@@ -47,6 +48,7 @@ const labels: Record<DownloadTask['state'], string> = {
   running: '下载中',
   verifying: '校验中',
   paused: '已暂停',
+  canceled: '已取消',
   done: '已完成',
   error: '下载失败',
 }
@@ -67,6 +69,7 @@ export function ModelsPage(): React.JSX.Element {
   const downloadModel = useApp((s) => s.downloadModel)
   const downloadAdapter = useApp((s) => s.downloadAdapter)
   const pauseDownload = useApp((s) => s.pauseDownload)
+  const cancelDownload = useApp((s) => s.cancelDownload)
   const deleteModel = useApp((s) => s.deleteModel)
   const toast = useToast()
   const [category, setCategory] = useState<string>('dit')
@@ -178,6 +181,15 @@ export function ModelsPage(): React.JSX.Element {
     }
     toast.push('条目已不在当前目录中，请刷新模型库。', 'error')
   }
+  async function cancel(task: DownloadTask): Promise<void> {
+    try {
+      await cancelDownload(task.id)
+      toast.push('下载已取消；已写入的临时分片保留，可重新开始', 'info')
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'error')
+    }
+  }
+
   async function remove(): Promise<void> {
     if (!removing) return
     setBusy('delete')
@@ -362,6 +374,9 @@ export function ModelsPage(): React.JSX.Element {
                       <Play className="size-3.5" />
                     </IconButton>
                   )}
+                  <IconButton label={`取消 ${task.label}`} onClick={() => void cancel(task)}>
+                    <X className="size-3.5" />
+                  </IconButton>
                 </div>
               ))}
             </div>

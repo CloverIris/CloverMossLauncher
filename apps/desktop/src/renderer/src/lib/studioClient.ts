@@ -17,6 +17,8 @@ export interface StudioProjectInput {
   cfg: number
   instanceId?: string
   backgroundPath?: string
+  seriesId?: string
+  page?: number
 }
 
 /**

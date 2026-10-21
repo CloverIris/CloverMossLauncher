@@ -76,13 +76,13 @@ export function AgentSidebar(): React.JSX.Element {
     setAccepted(new Set(splitPrompt(pendingPrompt).map((_, index) => index)))
   }, [pendingPrompt])
 
-  async function send(): Promise<void> {
+  async function sendText(raw: string): Promise<void> {
     if (!providerId) {
       setSettingsOpen(true)
       toast.push('先添加一个 AI Provider', 'info')
       return
     }
-    const text = input.trim()
+    const text = raw.trim()
     if (!text || busy) return
     const user: AiMessage = { id: `local-${Date.now()}`, role: 'user', content: text, createdAt: new Date().toISOString() }
     const history = [...messages, user]
@@ -109,6 +109,10 @@ export function AgentSidebar(): React.JSX.Element {
     } finally {
       setBusy(false)
     }
+  }
+
+  function send(): void {
+    void sendText(input)
   }
 
   function newChat(): void {
@@ -171,7 +175,7 @@ export function AgentSidebar(): React.JSX.Element {
   const presetKind = AI_PROVIDER_PRESETS.filter((item) => item.kind === draft.kind)
 
   return (
-    <aside className="glass-thin flex w-[340px] shrink-0 flex-col border-l border-[var(--color-border-subtle)]">
+    <aside className="glass-thin flex w-[320px] shrink-0 flex-col border-l border-[var(--color-border-subtle)]">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] px-3">
         <div className="flex items-center gap-1.5 text-[12px] font-semibold"><Bot className="size-3.5 text-accent-300" /> Agent</div>
         <div className="flex items-center gap-1">
@@ -223,6 +227,11 @@ export function AgentSidebar(): React.JSX.Element {
       )}
 
       <div className="shrink-0 border-t border-[var(--color-border-subtle)] p-2.5">
+        <div className="mb-1.5 flex flex-wrap gap-1">
+          <button type="button" onClick={() => void sendText('请润色当前 Prompt，使画面更具体、更有电影感；直接给出最终英文 Prompt。')} className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[8.5px] text-[var(--color-text-secondary)]">润色</button>
+          <button type="button" onClick={() => void sendText('请把当前 Prompt 翻成中文，保留画面术语；只给译文。')} className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[8.5px] text-[var(--color-text-secondary)]">译中</button>
+          <button type="button" onClick={() => void sendText('请把当前想法拆成主体、光影、构图、风格四段英文 Prompt。')} className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[8.5px] text-[var(--color-text-secondary)]">拆段</button>
+        </div>
         <div className="flex items-end gap-1.5">
           <textarea
             value={input}

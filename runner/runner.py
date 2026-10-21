@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CloverMoss thin runner.
+"""MossStudio thin runner.
 
 Loads the official MOSS-Image pipeline, runs one job, and emits NDJSON events on
 stdout. It never reimplements the model: it is a small orchestration shim so the

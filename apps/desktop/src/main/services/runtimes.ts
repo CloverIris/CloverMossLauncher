@@ -84,6 +84,16 @@ export async function pickPython(settings: Settings): Promise<{ path: string; ve
     const version = await pythonVersion(settings.pythonPath)
     if (version) return { path: settings.pythonPath, version }
   }
+  // Windows' `py` launcher can point at an interpreter that is not on PATH.
+  if (process.platform === 'win32') {
+    const py = await which('py')
+    if (py) {
+      const located = await run(py, ['-3', '-c', 'import sys;print(sys.executable)'], { timeoutMs: 5000 })
+      const path = firstLine(located.stdout)
+      const version = path ? await pythonVersion(path) : null
+      if (version) return { path, version }
+    }
+  }
   const names = ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3', 'python']
   for (const name of names) {
     const path = await which(name)
@@ -91,7 +101,31 @@ export async function pickPython(settings: Settings): Promise<{ path: string; ve
     const version = await pythonVersion(path)
     if (version) return { path, version }
   }
-  throw new Error('未找到 Python 3.10+。可在设置中指定解释器，或稍后安装托管 Python。')
+  if (process.platform === 'win32') {
+    const roots = [
+      process.env['LOCALAPPDATA'] ? join(process.env['LOCALAPPDATA'], 'Programs', 'Python') : '',
+      process.env['ProgramFiles'] ? join(process.env['ProgramFiles'], 'Python') : '',
+      'C:\\Python312',
+      'C:\\Python311',
+      'C:\\Python310',
+    ].filter(Boolean)
+    for (const root of roots) {
+      const candidates = [root]
+      try {
+        for (const entry of await readdir(root, { withFileTypes: true })) {
+          if (entry.isDirectory() && /^Python3\d+$/.test(entry.name)) candidates.push(join(root, entry.name))
+        }
+      } catch {
+        // root does not exist
+      }
+      for (const candidate of candidates) {
+        const path = join(candidate, 'python.exe')
+        const version = await pythonVersion(path)
+        if (version) return { path, version }
+      }
+    }
+  }
+  throw new Error('未找到 Python 3.10+。可在设置中指定解释器，或稍后安装受管 Python。')
 }
 
 
@@ -115,14 +149,34 @@ export function parseDepsFromPyproject(instanceDir: string): string[] {
   return deps
 }
 
-function lockHash(pythonVersionText: string, deps: string[]): string {
+function lockHash(pythonVersionText: string, deps: string[], torchIndex: string | null): string {
   return createHash('sha256')
-    .update(JSON.stringify({ python: pythonVersionText, platform: process.platform, arch: process.arch, deps: [...deps].sort() }))
+    .update(JSON.stringify({ python: pythonVersionText, platform: process.platform, arch: process.arch, deps: [...deps].sort(), torchIndex }))
     .digest('hex')
 }
 
 export async function hasUv(): Promise<boolean> {
   return (await which('uv')) !== null
+}
+
+async function hasNvidia(): Promise<boolean> {
+  const result = await run('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], { timeoutMs: 5000 })
+  return result.code === 0 && Boolean(firstLine(result.stdout))
+}
+
+/**
+ * PyPI's Windows torch wheel is CPU-only. Select the CUDA wheel index explicitly
+ * when the user has an NVIDIA GPU; macOS keeps PyPI wheels for MPS support.
+ */
+export async function resolveTorchIndex(settings: Settings): Promise<string | null> {
+  if (settings.torchIndex?.trim()) return settings.torchIndex.trim().replace(/\/$/, '')
+  if (settings.torchBackend === 'cpu') return 'https://download.pytorch.org/whl/cpu'
+  if (settings.torchBackend === 'cuda') {
+    if (process.platform === 'darwin') throw new Error('macOS 不支持 CUDA PyTorch；请选择 CPU/自动或使用 MPS')
+    return 'https://download.pytorch.org/whl/cu128'
+  }
+  if (process.platform === 'darwin') return null
+  return (await hasNvidia()) ? 'https://download.pytorch.org/whl/cu128' : 'https://download.pytorch.org/whl/cpu'
 }
 
 async function createVenv(runtime: RuntimeInfo, python: string, logger: Logger): Promise<void> {
@@ -156,7 +210,8 @@ export interface EnsureRuntimeInput {
 export async function ensureRuntime(input: EnsureRuntimeInput): Promise<RuntimeInfo> {
   const deps = parseDepsFromPyproject(input.instanceDir)
   const python = input.python ?? (await pickPython(input.settings))
-  const lock = lockHash(python.version, deps)
+  const torchIndex = await resolveTorchIndex(input.settings)
+  const lock = lockHash(python.version, deps, torchIndex)
 
   if (input.mode === 'shared') {
     const existing = (await listRuntimes()).find(
@@ -187,6 +242,7 @@ export async function ensureRuntime(input: EnsureRuntimeInput): Promise<RuntimeI
     kind: input.mode,
     state: 'created',
     deps,
+    torchIndex,
     createdAt: new Date().toISOString(),
   }
 
@@ -210,7 +266,9 @@ export async function installDeps(
   runtime.deps = existsSync(join(source, 'pyproject.toml'))
     ? parseDepsFromPyproject(source)
     : runtime.deps
-  runtime.lockHash = lockHash(runtime.pythonVersion, runtime.deps)
+  const torchIndex = await resolveTorchIndex(settings)
+  runtime.torchIndex = torchIndex
+  runtime.lockHash = lockHash(runtime.pythonVersion, runtime.deps, torchIndex)
   runtime.state = 'installing'
   await writeRuntime(runtime)
 
@@ -221,17 +279,39 @@ export async function installDeps(
     UV_CACHE_DIR: join(paths.cache(), 'uv'),
   }
 
-  loggerForRun(`安装依赖（${runtime.deps.length} 个）来自 ${index}`)
   const uv = await hasUv()
+  const torchDep = runtime.deps.find((dep) => /^torch(?:\s|[<>=!~]|$)/.test(dep)) ?? 'torch>=2.9'
+  const rest = runtime.deps.filter((dep) => dep !== torchDep)
+  loggerForRun(
+    torchIndex
+      ? `PyTorch 使用 ${torchIndex}（${settings.torchBackend}）`
+      : `PyTorch 使用默认 PyPI（${process.platform === 'darwin' ? 'MPS' : 'auto'}）`,
+  )
+  const install = async (targetIndex: string, deps: string[], extraIndex?: string) =>
+    uv
+      ? runStream(
+          'uv',
+          [
+            'pip', 'install', '--python', python, '--index-url', targetIndex,
+            ...(extraIndex ? ['--extra-index-url', extraIndex, '--index-strategy', 'unsafe-best-match'] : []),
+            ...deps,
+          ],
+          { timeoutMs: 3_600_000, env },
+          (line, stream) => loggerForRun(line, stream),
+        )
+      : runStream(
+          python,
+          [
+            '-m', 'pip', 'install', '--index-url', targetIndex,
+            ...(extraIndex ? ['--extra-index-url', extraIndex] : []),
+            ...deps,
+          ],
+          { timeoutMs: 3_600_000, env },
+          (line, stream) => loggerForRun(line, stream),
+        )
+
   let result
-  if (uv) {
-    result = await runStream(
-      'uv',
-      ['pip', 'install', '--python', python, '--index-url', index, ...runtime.deps],
-      { timeoutMs: 3_600_000, env },
-      (line, stream) => loggerForRun(line, stream),
-    )
-  } else {
+  if (!uv) {
     const upgrade = await runStream(
       python,
       ['-m', 'pip', 'install', '--upgrade', 'pip'],
@@ -239,12 +319,17 @@ export async function installDeps(
       (line, stream) => loggerForRun(line, stream),
     )
     if (upgrade.code !== 0) loggerForRun('升级 pip 失败，继续尝试安装', 'stderr')
-    result = await runStream(
-      python,
-      ['-m', 'pip', 'install', '--index-url', index, ...runtime.deps],
-      { timeoutMs: 3_600_000, env },
-      (line, stream) => loggerForRun(line, stream),
-    )
+  }
+  if (torchIndex) {
+    result = await install(torchIndex, [torchDep], index)
+    if (result.code !== 0) {
+      runtime.state = 'error'
+      await writeRuntime(runtime)
+      throw new Error(`PyTorch 安装失败（${torchIndex}）：${tail(result.stderr || result.stdout)}`)
+    }
+    result = rest.length ? await install(index, rest) : { code: 0, stdout: '', stderr: '', timedOut: false }
+  } else {
+    result = await install(index, runtime.deps)
   }
 
   if (result.code !== 0) {

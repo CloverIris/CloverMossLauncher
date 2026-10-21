@@ -8,13 +8,13 @@ import { paths } from '../lib/paths'
 import { getLastNetwork } from './network'
 
 const LATEST_RELEASE_URL =
-  'https://github.com/CloverIris/MossDesktop/releases/latest/download/release.md'
+  'https://github.com/CloverIris/MossStudio/releases/latest/download/release.md'
 const BETA_RELEASE_URL =
-  'https://github.com/CloverIris/MossDesktop/releases/download/beta/release.md'
+  'https://github.com/CloverIris/MossStudio/releases/download/beta/release.md'
 const RAW_RELEASE_URL =
-  'https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/release.md'
+  'https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/release.md'
 const JSDELIVR_RELEASE_URL =
-  'https://cdn.jsdelivr.net/gh/CloverIris/MossDesktop@main/release/release.md'
+  'https://cdn.jsdelivr.net/gh/CloverIris/MossStudio@main/release/release.md'
 
 export type ReleaseSource = 'local' | 'remote' | 'cache'
 export type UpdateChannel = 'stable' | 'beta'
@@ -52,7 +52,7 @@ function cacheFile(channel: UpdateChannel): string {
 
 async function fetchText(url: string, timeoutMs = 7000): Promise<string> {
   const response = await fetch(url, {
-    headers: { 'user-agent': `CloverMoss-Launcher/${app.getVersion()}` },
+    headers: { 'user-agent': `MossStudio-Launcher/${app.getVersion()}` },
     signal: AbortSignal.timeout(timeoutMs),
   })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -192,7 +192,7 @@ function legacyRelease(): LoadedRelease | null {
     const document: ReleaseDocument = {
       schema_version: 2,
       app: {
-        name: manifest.app.name ?? 'CloverMoss Launcher',
+        name: manifest.app.name ?? 'MossStudio',
         channel: manifest.app.channel === 'beta' ? 'beta' : 'stable',
         version: manifest.app.version,
         min_supported: manifest.app.min_supported,

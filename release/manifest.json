@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "app": {
-    "name": "CloverMoss Launcher",
+    "name": "MossStudio",
     "channel": "stable",
     "version": "0.1.0",
     "min_supported": "0.1.0",
     "published_at": "2026-10-19T02:00:00Z",
-    "notes_url": "https://github.com/CloverIris/MossDesktop/releases",
+    "notes_url": "https://github.com/CloverIris/MossStudio/releases",
     "rollout": 1
   },
   "home": {
@@ -18,8 +18,8 @@
     {
       "id": "2026-10-launch",
       "level": "info",
-      "title": "CloverMoss Launcher 内测开始",
-      "body_url": "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/README.md",
+      "title": "MossStudio 内测开始",
+      "body_url": "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/README.md",
       "starts_at": "2026-10-19T02:00:00Z",
       "ends_at": null,
       "dismissible": true,
@@ -54,13 +54,13 @@
       "https://hf-mirror.com"
     ],
     "manifest_mirrors": [
-      "https://cdn.jsdelivr.net/gh/CloverIris/MossDesktop@main/release/manifest.json",
-      "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/manifest.json",
-      "https://ghproxy.net/https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/manifest.json"
+      "https://cdn.jsdelivr.net/gh/CloverIris/MossStudio@main/release/manifest.json",
+      "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/manifest.json",
+      "https://ghproxy.net/https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/manifest.json"
     ]
   },
   "catalog": {
-    "models_url": "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/models.json",
-    "rules_url": "https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/rules.json"
+    "models_url": "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/models.json",
+    "rules_url": "https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/rules.json"
   }
 }

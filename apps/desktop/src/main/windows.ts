@@ -8,11 +8,11 @@ const isDev = !app.isPackaged
 const screenshot = process.argv.includes('--screenshot')
 
 const config: Record<WindowKind, { width: number; height: number; minWidth: number; minHeight: number; route: string; title: string }> = {
-  launcher: { width: 1180, height: 760, minWidth: 960, minHeight: 640, route: '/', title: 'CloverMoss' },
-  creator: { width: 1320, height: 860, minWidth: 1040, minHeight: 680, route: '/studio', title: 'MossStudio' },
-  terminal: { width: 1120, height: 720, minWidth: 900, minHeight: 560, route: '/terminal', title: 'CloverMoss Terminal' },
+  launcher: { width: 1180, height: 760, minWidth: 960, minHeight: 640, route: '/', title: 'MossStudio' },
+  creator: { width: 1600, height: 920, minWidth: 1200, minHeight: 720, route: '/studio', title: 'MossStudio' },
+  terminal: { width: 1120, height: 720, minWidth: 900, minHeight: 560, route: '/terminal', title: 'MossStudio Terminal' },
   trainer: { width: 1280, height: 840, minWidth: 980, minHeight: 640, route: '/trainer', title: 'Kohaku Trainer' },
-  devices: { width: 1180, height: 780, minWidth: 960, minHeight: 640, route: '/devices', title: 'CloverMoss Devices' },
+  devices: { width: 1180, height: 780, minWidth: 960, minHeight: 640, route: '/devices', title: 'MossStudio Devices' },
 }
 
 export function createAppWindow(kind: WindowKind, show = true): BrowserWindow {

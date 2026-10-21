@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 280" fill="none">
-  <title>Clover Moss Launcher logo</title>
-  <desc>A four-leaf clover beside the Clover Moss Launcher wordmark.</desc>
+  <title>MossStudio logo</title>
+  <desc>A four-leaf clover beside the MossStudio wordmark.</desc>
 
   <rect width="1160" height="280" rx="20" fill="#202329" />
 
@@ -22,6 +22,6 @@
   </g>
 
   <g font-family="Avenir Next, Segoe UI, sans-serif" font-size="70" font-weight="650" fill="#8AB6FF">
-    <text x="270" y="166">Clover Moss Launcher</text>
+    <text x="270" y="166">MossStudio</text>
   </g>
 </svg>

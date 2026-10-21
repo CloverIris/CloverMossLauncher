@@ -116,7 +116,7 @@ const announcements = (manifest.announcements ?? []).map((item) => ({
 const machine = {
   schema_version: 2,
   app: {
-    name: manifest.app?.name ?? 'CloverMoss Launcher',
+    name: manifest.app?.name ?? 'MossStudio',
     channel: manifest.app?.channel === 'beta' ? 'beta' : 'stable',
     version: manifest.app?.version,
     ...(manifest.app?.min_supported ? { min_supported: manifest.app.min_supported } : {}),
@@ -145,7 +145,7 @@ const machine = {
     updated_at: catalog.updated_at ?? manifest.app?.published_at,
     models_url:
       manifest.catalog?.models_url ??
-      'https://raw.githubusercontent.com/CloverIris/MossDesktop/main/release/models.json',
+      'https://raw.githubusercontent.com/CloverIris/MossStudio/main/release/models.json',
     models_sha256: catalogSha,
   },
   announcements,
@@ -174,7 +174,7 @@ const installerText = installers.length
       .join('\n')
   : '_当前发布未附带安装包。_'
 
-const document = `# CloverMoss Launcher ${manifest.app?.version ?? 'dev'}
+const document = `# MossStudio ${manifest.app?.version ?? 'dev'}
 
 > 本文件由 \`node tools/release-md.mjs\` 从 \`release/manifest.json\` 与
 > \`release/models.json\` 生成；请勿直接手改。发布时把本文件作为 GitHub Release

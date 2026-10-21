@@ -273,7 +273,7 @@ export async function getCatalog(settings: Settings, force = false): Promise<Cat
     } else {
       const base =
         getLastNetwork()?.selected.manifest ??
-        'https://raw.githubusercontent.com/CloverIris/MossDesktop/main'
+        'https://raw.githubusercontent.com/CloverIris/MossStudio/main'
       raw = JSON.parse(
         await fetchText(`${base.replace(/\/$/, '')}/release/models.json`),
       ) as RawCatalog
@@ -790,6 +790,16 @@ export async function downloadCustomModel(repo: string, settings: Settings): Pro
     settings,
   )
 }
+export async function cancelDownload(id: string): Promise<void> {
+  const task = tasks.get(id)
+  if (!task) return
+  controllers.get(id)?.abort()
+  controllers.delete(id)
+  await completions.get(id)?.catch(() => undefined)
+  tasks.delete(id)
+  emit(Events.download, { ...task, state: 'canceled', speedBps: 0, currentFile: undefined })
+}
+
 export function pauseDownload(id: string): void {
   const task = tasks.get(id)
   if (!task || !['queued', 'running', 'verifying'].includes(task.state)) return

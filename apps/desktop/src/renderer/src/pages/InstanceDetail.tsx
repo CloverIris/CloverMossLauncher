@@ -23,6 +23,7 @@ export function InstanceDetailPage(): React.JSX.Element {
   const [busy, setBusy] = useState<'install' | 'isolate' | 'update' | null>(null)
   const [commits, setCommits] = useState<CommitInfo[]>([])
   const [targetCommit, setTargetCommit] = useState('')
+  const [commitError, setCommitError] = useState('')
   const [bindings, setBindings] = useState<Array<{ id: string; enabled: boolean; strength: number }>>([])
   const logRef = useRef<HTMLPreElement>(null)
 
@@ -68,10 +69,14 @@ export function InstanceDetailPage(): React.JSX.Element {
           })
     void request
       .then((rows) => {
+        setCommitError('')
         setCommits(rows)
         setTargetCommit((current) => current || instance.commit)
       })
-      .catch(() => setCommits([]))
+      .catch((error) => {
+        setCommitError(error instanceof Error ? error.message : String(error))
+        setCommits([])
+      })
   }, [instance?.branch, instance?.commit, instance])
 
   if (!instance) {
@@ -261,6 +266,9 @@ export function InstanceDetailPage(): React.JSX.Element {
                 {busy === 'update' ? <Spinner className="size-3" /> : '切换'}
               </Button>
             </div>
+            {commitError ? (
+              <p className="mt-1.5 text-[9.5px] leading-4 text-red-300">读取提交失败：{commitError}</p>
+            ) : null}
             {instance.dirty ? (
               <p className="mt-1.5 text-[9.5px] text-amber-300/80">实例有本地修改，先清理或提交后再切换 pin。</p>
             ) : instance.placement.kind === 'ssh' ? (

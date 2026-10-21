@@ -1,8 +1,8 @@
 <div align="center">
 
-<h1>Clover Moss Launcher</h1>
+<h1>MossStudio</h1>
 
-<img src="apps/desktop/src/renderer/src/assets/clovermoss-logo.svg" alt="Clover Moss Launcher 标志" width="580" />
+<img src="apps/desktop/src/renderer/src/assets/clovermoss-logo.svg" alt="MossStudio 标志" width="580" />
 
 **面向 MOSS-Image 的桌面管理与创作工作台**
 
@@ -17,7 +17,7 @@ MOSS-Image 的桌面启动器与工作台：管理实例、运行时、模型和
 
 ## 项目简介
 
-Clover Moss Launcher 是 MOSS-Image 的桌面编排器，目标是让用户可以管理代码版本和 Python 环境、选择设备与工作台、启动任务并查看日志，而不必把日常操作都放在终端里。它本身不是推理引擎，也不重写训练器：推理由项目 runner / Clover 后端执行，训练通过外部 KohakuMossTrainer 接入。官方 Gradio 正从正式产品入口退役。
+MossStudio 是 MOSS-Image 的桌面编排器，目标是让用户可以管理代码版本和 Python 环境、选择设备与工作台、启动任务并查看日志，而不必把日常操作都放在终端里。它本身不是推理引擎，也不重写训练器：推理由项目 runner / Clover 后端执行，训练通过外部 KohakuMossTrainer 接入。官方 Gradio 正从正式产品入口退役。
 
 项目仍处于开发阶段。功能状态和可重复验证证据以[实现状态](docs/status.md)为准；表格中的“部分 / 待验收”表示代码路径存在，但尚未在真实权重、NVIDIA CUDA、SSH 主机或正式安装包上完整验证。
 

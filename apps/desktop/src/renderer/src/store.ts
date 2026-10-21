@@ -91,6 +91,7 @@ interface AppStore {
   downloadModel: (modelId: string) => Promise<void>
   downloadAdapter: (adapterId: string) => Promise<void>
   pauseDownload: (taskId: string) => Promise<void>
+  cancelDownload: (taskId: string) => Promise<void>
   deleteModel: (kind: 'model' | 'adapter', id: string) => Promise<void>
   refreshJobs: () => Promise<void>
   startJob: (input: JobStartInput) => Promise<JobRecord>
@@ -141,6 +142,10 @@ export const useApp = create<AppStore>((set, get) => {
     subscribed = true
 
     onEvent<DownloadTask>(Events.download, (task) => {
+      if (task.state === 'canceled') {
+        set((state) => ({ downloads: state.downloads.filter((item) => item.id !== task.id) }))
+        return
+      }
       set((state) => ({ downloads: upsertDownload(state.downloads, task) }))
       if (task.state === 'done') {
         void get().refreshCatalog()
@@ -229,7 +234,7 @@ export const useApp = create<AppStore>((set, get) => {
         get().pushNotification({
           tone: 'success',
           title: '更新已下载',
-          message: `CloverMoss ${state.version} 安装程序已打开`,
+          message: `MossStudio ${state.version} 安装程序已打开`,
         })
       } else if (state.phase === 'error') {
         get().pushNotification({
@@ -347,7 +352,7 @@ export const useApp = create<AppStore>((set, get) => {
           get().pushNotification({
             tone: 'info',
             title: '发现新版本',
-            message: `CloverMoss ${updates.value.latestVersion} 可用`,
+            message: `MossStudio ${updates.value.latestVersion} 可用`,
           })
           if (
             updates.value.latestVersion &&
@@ -508,6 +513,11 @@ export const useApp = create<AppStore>((set, get) => {
 
     async pauseDownload(taskId) {
       await call(Ipc.modelPause, { taskId })
+    },
+
+    async cancelDownload(taskId) {
+      await call(Ipc.modelCancel, { taskId })
+      set((state) => ({ downloads: state.downloads.filter((item) => item.id !== taskId) }))
     },
 
     async deleteModel(kind, id) {

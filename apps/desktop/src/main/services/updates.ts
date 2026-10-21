@@ -14,7 +14,7 @@ let lastNotifiedUpdateVersion: string | null = null
 
 async function fetchText(url: string, timeoutMs = 6000): Promise<string> {
   const response = await fetch(url, {
-    headers: { 'user-agent': `CloverMoss-Launcher/${app.getVersion()}` },
+    headers: { 'user-agent': `MossStudio-Launcher/${app.getVersion()}` },
     signal: AbortSignal.timeout(timeoutMs),
   })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -28,7 +28,7 @@ async function resolveBody(
 ): Promise<string> {
   if (raw.body_markdown) return raw.body_markdown
   if (!raw.body_url) return ''
-  if (localDir && raw.body_url.includes('CloverIris/MossDesktop')) {
+  if (localDir && raw.body_url.includes('CloverIris/MossStudio')) {
     const readme = join(localDir, 'README.md')
     if (existsSync(readme)) return readFileSync(readme, 'utf8')
   }

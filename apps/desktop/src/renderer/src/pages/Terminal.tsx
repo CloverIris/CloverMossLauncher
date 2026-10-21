@@ -138,7 +138,7 @@ export function TerminalPage(): React.JSX.Element {
     }
     if (writtenRef.current === 0) {
       term.clear()
-      term.write(`\x1b[38;2;138;182;255mCloverMoss terminal\x1b[0m  ${active.instanceName}\r\n`)
+      term.write(`\x1b[38;2;138;182;255mMossStudio terminal\x1b[0m  ${active.instanceName}\r\n`)
       const subtitle =
         active.kind === 'training'
           ? `training · step ${active.metrics?.step ?? active.progress.current}/${active.progress.total || '—'}${
@@ -157,6 +157,10 @@ export function TerminalPage(): React.JSX.Element {
   }, [active, logs])
 
   async function restart(job: typeof jobs[number]): Promise<void> {
+    if (job.kind === 'training') {
+      toast.push('训练任务请在 Kohaku Trainer 中重新启动', 'info')
+      return
+    }
     if (!job.params.prompt.trim()) {
       toast.push('这条旧任务没有提示词，请在 MossStudio 中重新生成', 'info')
       return
@@ -191,7 +195,7 @@ export function TerminalPage(): React.JSX.Element {
         <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[11px] font-medium">
             <SquareTerminal className="size-3.5 text-[var(--color-text-tertiary)]" />
-            Cases
+            任务
           </div>
           <span className="text-[9.5px] text-[var(--color-text-tertiary)]">{ordered.length}</span>
         </header>
@@ -200,7 +204,7 @@ export function TerminalPage(): React.JSX.Element {
             <p className="px-3 py-8 text-center text-[10.5px] leading-5 text-[var(--color-text-tertiary)]">
               还没有任务。
               <br />
-              去启动器点「启动」。
+              去 MossStudio 开始生成。
             </p>
           ) : (
             ordered.map((job) => (

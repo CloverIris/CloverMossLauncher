@@ -284,7 +284,7 @@ export function SettingsPage(): React.JSX.Element {
               <span className="text-[10.5px] text-[var(--color-text-tertiary)]">自定义模型根目录（留空使用默认）</span>
               <Input
                 value={draft.modelsRoot ?? ''}
-                placeholder="例如 /Volumes/Data/CloverMoss/models"
+                placeholder="例如 /Volumes/Data/MossStudio/models"
                 onChange={(event) => patch({ modelsRoot: event.target.value || null })}
                 className="w-full font-mono"
               />
@@ -354,6 +354,30 @@ export function SettingsPage(): React.JSX.Element {
                 placeholder="/opt/homebrew/bin/python3.12"
                 onChange={(event) => patch({ pythonPath: event.target.value || null })}
                 className="w-full font-mono"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[10.5px] text-[var(--color-text-tertiary)]">PyTorch 安装</span>
+              <Select
+                value={draft.torchBackend}
+                onChange={(event) => patch({ torchBackend: event.target.value as Settings['torchBackend'] })}
+                options={[
+                  { value: 'auto', label: '自动（有 NVIDIA 用 CUDA）' },
+                  { value: 'cpu', label: 'CPU' },
+                  { value: 'cuda', label: 'CUDA' },
+                ]}
+              />
+              <span className="block text-[9px] leading-4 text-[var(--color-text-tertiary)]">
+                Windows/Linux 自动选择 CUDA 轮子；macOS 使用 PyPI MPS 轮子。CUDA 默认 cu128。
+              </span>
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[10.5px] text-[var(--color-text-tertiary)]">PyTorch 自定义索引（可选）</span>
+              <Input
+                value={draft.torchIndex ?? ''}
+                placeholder="https://download.pytorch.org/whl/cu128"
+                onChange={(event) => patch({ torchIndex: event.target.value || null })}
+                className="w-full font-mono text-[10px]"
               />
             </label>
             <div className="rounded-lg bg-[var(--color-surface-secondary)] px-3 py-2">
@@ -629,7 +653,7 @@ export function SettingsPage(): React.JSX.Element {
             <button
               type="button"
               onClick={() =>
-                void call(Ipc.openExternal, { url: 'https://github.com/CloverIris/MossDesktop' })
+                void call(Ipc.openExternal, { url: 'https://github.com/CloverIris/MossStudio' })
               }
               className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-accent-600 hover:underline dark:text-accent-300"
             >
