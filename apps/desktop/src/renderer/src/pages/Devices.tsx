@@ -38,9 +38,9 @@ const EMPTY_FORM: HostForm = {
   user: '',
   port: '22',
   identityFile: '',
-  trainerRoot: '~/MossStudioTrainer',
-  instanceRoot: '~/MossStudio/instances',
-  modelsRoot: '~/MossStudio/models',
+  trainerRoot: '~/.mossstudio/trainer',
+  instanceRoot: '~/.mossstudio/instances',
+  modelsRoot: '~/.mossstudio/models',
 }
 
 function statusTone(host: ManagedHost): 'accent' | 'red' | 'amber' | 'neutral' {
@@ -141,8 +141,8 @@ export function DevicesPage(): React.JSX.Element {
       port: String(host.port ?? 22),
       identityFile: host.identityFile ?? '',
       trainerRoot: host.trainerRoot,
-      instanceRoot: host.instanceRoot ?? '~/MossStudio/instances',
-      modelsRoot: host.modelsRoot ?? '~/MossStudio/models',
+      instanceRoot: host.instanceRoot ?? '~/.mossstudio/instances',
+      modelsRoot: host.modelsRoot ?? '~/.mossstudio/models',
     })
     setHostOpen(true)
   }
