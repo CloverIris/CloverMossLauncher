@@ -6,7 +6,7 @@ export interface LocalNotificationInput {
   title: string
   body: string
   /** Window to focus when the notification is clicked. */
-  windowKind?: 'launcher' | 'terminal'
+  windowKind?: 'studio' | 'trainer'
   route?: string
 }
 
@@ -29,7 +29,7 @@ export function pushLocalNotification(input: LocalNotificationInput): boolean {
       silent: false,
     })
     notification.on('click', () => {
-      const win = openWindow(input.windowKind ?? 'launcher', input.route)
+      const win = openWindow(input.windowKind ?? 'studio', input.route)
       win.show()
       win.focus()
     })
@@ -44,7 +44,7 @@ export function pushTestNotification(): boolean {
   return pushLocalNotification({
     title: 'MossStudio 通知测试',
     body: '本地系统通知已启用。任务完成或失败时会在这里提醒。',
-    windowKind: 'launcher',
+    windowKind: 'studio',
     route: '/settings',
   })
 }

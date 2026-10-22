@@ -56,7 +56,7 @@ module.exports = async function checkStudio({ evaluate, waitFor }) {
   await evaluate(`Array.from(document.querySelectorAll('button')).find(element => element.textContent.includes('打开 MossStudio')).click()`)
   await waitFor(`Boolean(document.querySelector('#window-request').textContent)`)
   assert.deepEqual(await evaluate(`JSON.parse(document.querySelector('#window-request').textContent)`), {
-    kind: 'creator', route: '/studio?instanceId=instance-b',
+    target: 'studio', route: '/studio?instanceId=instance-b',
   })
   console.log('Studio checks passed: async selection, generation payload, list refresh/removal, repeated launch requests, launcher handoff')
 }

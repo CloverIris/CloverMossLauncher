@@ -128,7 +128,7 @@ function update(job: JobRecord, patch: Partial<JobRecord>): void {
         job.state === 'succeeded'
           ? `${target} · 点击查看终端`
           : `${target} · ${job.error?.message ?? '查看诊断了解原因'}`,
-      windowKind: job.state === 'succeeded' ? 'terminal' : 'launcher',
+      windowKind: 'studio',
       route: job.state === 'succeeded' ? undefined : '/diagnostics',
     })
   }

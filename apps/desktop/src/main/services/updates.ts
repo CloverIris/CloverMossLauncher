@@ -106,7 +106,7 @@ export async function checkUpdates(settings?: Settings): Promise<UpdateState> {
       const shown = pushLocalNotification({
         title: `发现新版本 ${doc.app.version}`,
         body: '打开启动器查看更新说明并选择是否安装。',
-        windowKind: 'launcher',
+        windowKind: 'studio',
         route: '/settings',
       })
       if (shown) lastNotifiedUpdateVersion = doc.app.version

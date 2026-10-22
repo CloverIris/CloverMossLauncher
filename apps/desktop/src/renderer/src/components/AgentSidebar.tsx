@@ -175,7 +175,7 @@ export function AgentSidebar(): React.JSX.Element {
   const presetKind = AI_PROVIDER_PRESETS.filter((item) => item.kind === draft.kind)
 
   return (
-    <aside className="glass-thin flex w-[320px] shrink-0 flex-col border-l border-[var(--color-border-subtle)]">
+    <aside className="glass-thin flex h-full w-[320px] shrink-0 flex-col border-l border-[var(--color-border-subtle)]">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] px-3">
         <div className="flex items-center gap-1.5 text-[12px] font-semibold"><Bot className="size-3.5 text-accent-300" /> Agent</div>
         <div className="flex items-center gap-1">

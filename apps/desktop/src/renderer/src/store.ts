@@ -289,7 +289,7 @@ export const useApp = create<AppStore>((set, get) => {
     launchRows: [],
     onboarding: null,
     notifications: [],
-    notificationsOpen: true,
+    notificationsOpen: false,
     studioPrompt: '',
     studioInstanceId: null,
     studioDraft: null,

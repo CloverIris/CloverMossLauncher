@@ -67,7 +67,7 @@ env -u ELECTRON_RUN_AS_NODE pnpm --filter @clover/desktop exec electron . --smok
 | Studio 后端 | 🟡 | utilityProcess HTTP/WS、token、RPC、静态 Web root；health/WS/Job/Studio API/static 已验；真实生成与手机验收未做 |
 | 创作生成 | 🟡 | 已通过 backend `/api/jobs` 提交 Supervisor；缺权重/运行时预检仍拦截 |
 | Project/图层 | 🟡 | `projects/<id>/project.json` + assets、自动保存、图层 visible/lock/opacity；未做完整 UI 验收 |
-| 四窗口 UI v0.4 | ✅ | 启动器/创作/终端/训练；全局背景（历史阶段） |
+| 双窗口 Studio v0.5 | 🟡 | Studio + Trainer；管理面为 Studio 覆盖层、终端抽屉、三列可停靠面板 |
 | 五窗口 UI v0.5 | 🟡 | 新增设备管理器；工作台/Gradio 参数；真实 host/权重未验收 |
 | Kohaku Trainer 仓库 | ✅ | runtime clone、bare mirror、commit/worktree |
 | Trainer 环境管理 | 🟡 | 本机/远端 venv、lock hash、install、doctor 代码路径；fake uv 验证，真实 CUDA 未 |
@@ -100,7 +100,7 @@ env -u ELECTRON_RUN_AS_NODE pnpm --filter @clover/desktop exec electron . --smok
 | --- | --- | --- |
 | 构建/类型 | `pnpm build` / `pnpm typecheck` | 通过 |
 | 自检 | `--smoke` | 退出码 0；M3 / 16 GB / 网络镜像；本次环境项报告 `disk:error`（空闲空间低于 30 GB） |
-| 窗口创建 | `--scenario=windows` 与 `--screenshot` | 创作/终端/训练/设备管理器窗口均可渲染 |
+| 窗口创建 | `--scenario=windows` 与 `--screenshot` | Studio + Trainer 两个窗口；管理页/终端为 Studio 内 UI |
 | 训练器部署 | `--scenario=trainer-deploy` | clone trainer mirror、创建 `kohaku-3bcd751` worktree |
 | 训练 Job | `--scenario=trainer-job` | `succeeded`，step 5、loss 0.1、5 行日志 |
 | SSH host | `--scenario=trainer-host` | 保存/读取/删除成功（before 2 / after 1） |

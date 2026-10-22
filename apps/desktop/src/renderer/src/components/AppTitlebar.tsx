@@ -51,7 +51,7 @@ export function AppTitlebar({
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </IconButton>
         ) : (
-          <IconButton label="回到启动器" className="size-7" onClick={() => openWindow('launcher')}>
+          <IconButton label="回到工作台" className="size-7" onClick={() => openWindow('launcher')}>
             <House className="size-4" />
           </IconButton>
         )}

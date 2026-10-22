@@ -48,6 +48,9 @@ window.clover = {
     return { ok: true, data } as T
   },
 }
+window.addEventListener('mossstudio:window-intent', (event) => {
+  document.getElementById('window-request')!.textContent = JSON.stringify((event as CustomEvent).detail)
+})
 useApp.setState({ settings: savedSettings, ready: true, notificationsOpen: false })
 
 function ToastProbe(): React.JSX.Element {

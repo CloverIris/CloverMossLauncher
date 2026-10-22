@@ -126,7 +126,7 @@ export const schemas = {
   announcementsDismiss: z.object({ id: z.string().min(1).max(120) }),
 
   windowOpen: z.object({
-    kind: z.enum(['launcher', 'creator', 'terminal', 'trainer', 'devices']),
+    kind: z.enum(['studio', 'trainer']),
     route: z.string().regex(/^\/[a-z0-9/_-]*(?:\?instanceId=[a-z0-9._%~-]+)?$/i).max(120).optional(),
   }),
 

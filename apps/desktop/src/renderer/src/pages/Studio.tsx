@@ -1,6 +1,10 @@
 import {
   ArrowRight,
   Box,
+  GripVertical,
+  Hand,
+  Images,
+  Plus,
   Copy,
   Eraser,
   ImagePlus,
@@ -21,6 +25,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { GalleryItem, InstanceInfo, JobRecord, ProjectDocument, ProjectSummary } from '@shared/types'
 import type { BackendInfo } from '@shared/backend'
+import { Ipc } from '@shared/channels'
+import { call } from '../lib/api'
 import { electronStudioClient } from '../lib/studioClient'
 import { openWindow } from '../lib/windows'
 import { cloverUrl } from '../lib/clover'
@@ -51,6 +57,79 @@ const LABEL_META: Record<LayoutLabel, { name: string; color: string; icon: React
   object: { name: '物体', color: 'accent', icon: <Box className="size-3" /> },
   character: { name: '人物', color: 'sky', icon: <UserRound className="size-3" /> },
   text: { name: '文字', color: 'amber', icon: <Type className="size-3" /> },
+}
+
+type PanelId = 'prompt' | 'sampler' | 'summary' | 'layers' | 'gallery'
+type DockId = 'left' | 'right' | 'float'
+const DEFAULT_DOCKS: Record<DockId, PanelId[]> = {
+  left: ['prompt', 'sampler', 'gallery'],
+  right: ['layers', 'summary'],
+  float: [],
+}
+
+function DockPanel({
+  id,
+  title,
+  dock,
+  onDock,
+  children,
+}: {
+  id: PanelId
+  title: string
+  dock: DockId
+  onDock: (id: PanelId, dock: DockId) => void
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <section
+      className="flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/85 shadow-sm backdrop-blur-sm"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault()
+        const source = event.dataTransfer.getData('text/moss-panel') as PanelId
+        if (source) onDock(source, dock)
+      }}
+    >
+      <div
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData('text/moss-panel', id)
+          event.dataTransfer.effectAllowed = 'move'
+        }}
+        className="flex h-7 shrink-0 cursor-grab items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-2 text-[10px] font-medium text-[var(--color-text-secondary)] active:cursor-grabbing"
+      >
+        <GripVertical className="size-3 text-[var(--color-text-tertiary)]" />
+        {title}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+    </section>
+  )
+}
+
+function MiniGallery(): React.JSX.Element {
+  const setStudioBackground = useApp((state) => state.setStudioBackground)
+  const [items, setItems] = useState<GalleryItem[]>([])
+  useEffect(() => {
+    void call<{ items: GalleryItem[] }>(Ipc.galleryList, { limit: 8 }).then((page) => setItems(page.items ?? [])).catch(() => undefined)
+  }, [])
+  return (
+    <div className="p-2">
+      <div className="grid grid-cols-4 gap-1">
+        {items.map((item) => (
+          <button
+            key={item.path}
+            type="button"
+            title={item.name}
+            onClick={() => setStudioBackground(item)}
+            className="aspect-square overflow-hidden rounded border border-white/10 bg-black/20 hover:border-accent-400"
+          >
+            <img src={cloverUrl(item.path)} alt={item.name} className="size-full object-cover" loading="lazy" />
+          </button>
+        ))}
+        {items.length === 0 ? <span className="col-span-4 py-4 text-center text-[9px] text-[var(--color-text-tertiary)]">画廊为空</span> : null}
+      </div>
+    </div>
+  )
 }
 
 type DragState =
@@ -121,7 +200,7 @@ export function StudioPage(): React.JSX.Element {
   const [prompt, setPrompt] = useState(storedPrompt)
   const [negative, setNegative] = useState('nsfw, worst quality, bad anatomy, watermark, jpeg artifact')
   const [draft, setDraft] = useState<LayoutDraft>(storedDraft ?? exampleDraft())
-  const [tool, setTool] = useState<'select' | 'draw'>('draw')
+  const [tool, setTool] = useState<'select' | 'draw' | 'pan'>('draw')
   const [label, setLabel] = useState<LayoutLabel>('object')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [drawing, setDrawing] = useState<{ start: [number, number]; current: [number, number] } | null>(null)
@@ -130,6 +209,12 @@ export function StudioPage(): React.JSX.Element {
   const [jsonOpen, setJsonOpen] = useState(false)
   const [segmentsOpen, setSegmentsOpen] = useState(false)
   const [gbcOpen, setGbcOpen] = useState(false)
+  const [docks, setDocks] = useState(DEFAULT_DOCKS)
+  const [tabOrder, setTabOrder] = useState<string[]>([])
+  const [dragTab, setDragTab] = useState<string | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
   const [steps, setSteps] = useState(env?.recommendation.steps ?? 8)
   const [cfg, setCfg] = useState(env?.recommendation.profile === 'dmd8' ? 1 : 3)
   const [seed, setSeed] = useState(42)
@@ -272,6 +357,7 @@ export function StudioPage(): React.JSX.Element {
   }
 
   function handlePointerUp(): void {
+    endPan()
     if (drawing) {
       const [x1, y1] = drawing.start
       const [x2, y2] = drawing.current
@@ -540,313 +626,183 @@ export function StudioPage(): React.JSX.Element {
     }
   }
 
+  const orderedProjects = [
+    ...tabOrder.map((id) => projects.find((item) => item.id === id)).filter(Boolean),
+    ...projects.filter((item) => !tabOrder.includes(item.id)),
+  ] as ProjectSummary[]
+  useEffect(() => {
+    setTabOrder((previous) => [...previous.filter((id) => projects.some((item) => item.id === id)), ...projects.map((item) => item.id).filter((id) => !previous.includes(id))])
+  }, [projects])
+  function movePanel(id: PanelId, dock: DockId): void {
+    setDocks((previous) => {
+      const next: Record<DockId, PanelId[]> = { left: previous.left.filter((item) => item !== id), right: previous.right.filter((item) => item !== id), float: previous.float.filter((item) => item !== id) }
+      next[dock] = [...next[dock], id]
+      return next
+    })
+  }
+  function pickUpPan(event: React.PointerEvent<HTMLDivElement>): void {
+    if (tool !== 'pan') return
+    panRef.current = { x: event.clientX, y: event.clientY, ox: pan.x, oy: pan.y }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  function movePan(event: React.PointerEvent<HTMLDivElement>): void {
+    if (!panRef.current) return
+    setPan({ x: panRef.current.ox + event.clientX - panRef.current.x, y: panRef.current.oy + event.clientY - panRef.current.y })
+  }
+  function endPan(): void { panRef.current = null }
+  function renderPanel(id: PanelId): React.JSX.Element {
+    if (id === 'prompt') return (
+      <div className="space-y-2 p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] text-[var(--color-text-tertiary)]">{prompt.length} 字符</span>
+          <button type="button" onClick={() => setSegmentsOpen(true)} className="text-[9px] text-accent-300 hover:underline">分段 / 确认</button>
+        </div>
+        <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述画面、文字、风格与布局。" className="h-36 w-full resize-none leading-5" />
+        <label className="block text-[9.5px] text-[var(--color-text-tertiary)]">负面提示词</label>
+        <Input value={negative} onChange={(event) => setNegative(event.target.value)} className="w-full" />
+      </div>
+    )
+    if (id === 'sampler') return (
+      <div className="space-y-2.5 p-3">
+        <div className="flex flex-wrap gap-1">
+          {SIZE_PRESETS.map(([name, width, height]) => (
+            <button key={name} type="button" onClick={() => changeSize(width, height)} className={cn('rounded-full border px-2 py-0.5 text-[9px]', draft.width === width && draft.height === height ? 'border-accent-500/40 bg-accent-500/12 text-accent-200' : 'border-[var(--color-border)] text-[var(--color-text-secondary)]')}>{name}</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">宽度</span><Input type="number" min={256} max={2048} step={16} value={draft.width} onChange={(event) => changeSize(Number(event.target.value) || draft.width, draft.height)} /></label>
+          <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">高度</span><Input type="number" min={256} max={2048} step={16} value={draft.height} onChange={(event) => changeSize(draft.width, Number(event.target.value) || draft.height)} /></label>
+        </div>
+        <div className="flex items-center justify-between"><span className="text-[9.5px]">步数</span><Segmented label="采样步数" value={String(steps)} onChange={(value) => setSteps(Number(value))} options={[{ value: '8', label: '8 DMD' }, { value: '20', label: '20' }, { value: '50', label: '50' }]} /></div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">CFG</span><Input type="number" min={0} max={20} step={0.5} value={cfg} onChange={(event) => setCfg(Number(event.target.value))} /></label>
+          <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">Seed</span><Input type="number" value={seed} onChange={(event) => setSeed(Number(event.target.value))} /></label>
+        </div>
+        <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">实例</span><Select value={instanceId} onChange={(event) => setInstanceId(event.target.value)} className="w-full">{instances.length === 0 ? <option value="">尚未创建实例</option> : null}{instances.map((instance: InstanceInfo) => <option key={instance.id} value={instance.id}>{instance.name} · {instance.runtimeState === 'ready' ? '就绪' : '未装依赖'}</option>)}</Select></label>
+      </div>
+    )
+    if (id === 'summary') return (
+      <div className="space-y-2 p-3">
+        <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">整体描述</span><Textarea value={draft.summary.caption} onChange={(event) => setDraft((previous) => ({ ...previous, summary: { ...previous.summary, caption: event.target.value } }))} placeholder="一句话描述整张图。" className="h-16 w-full resize-none" /></label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">meta</span><Input value={draft.summary.meta.join(', ')} onChange={(event) => setDraft((previous) => ({ ...previous, summary: { ...previous.summary, meta: event.target.value.split(',').map((value) => value.trim()).filter(Boolean) } }))} className="w-full" /></label>
+          <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">canvas</span><Select value={draft.summary.canvas} onChange={(event) => setDraft((previous) => ({ ...previous, summary: { ...previous.summary, canvas: event.target.value as LayoutDraft['summary']['canvas'] } }))} className="w-full"><option value="single">single</option><option value="multi_panel">multi_panel</option><option value="collage">collage</option></Select></label>
+        </div>
+        <Button tone="secondary" className="w-full" onClick={compile}><SquareDashedMousePointer className="size-3.5" /> 编译布局 Prompt</Button>
+      </div>
+    )
+    if (id === 'gallery') return <MiniGallery />
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)] p-1.5">
+          {draft.items.map((item, index) => <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className={cn('flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[9px]', item.id === selectedId ? 'border-accent-500/50 bg-accent-500/12 text-accent-200' : 'border-[var(--color-border-subtle)]')}>{index + 1}<span className="max-w-[80px] truncate">{item.caption || LABEL_META[item.label].name}</span></button>)}
+          <Button tone="ghost" onClick={() => { setTool('draw'); setSelectedId(null) }}><Plus className="size-3" />框</Button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {selected ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Select value={selected.label} onChange={(event) => setItem(selected.id, { label: event.target.value as LayoutLabel })} className="w-[76px]"><option value="object">物体</option><option value="character">人物</option><option value="text">文字</option></Select>
+                <button type="button" onClick={() => setItem(selected.id, { visible: selected.visible === false })} title="显示/隐藏">{selected.visible === false ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</button>
+                <button type="button" onClick={() => setItem(selected.id, { locked: !selected.locked })} title="锁定">{selected.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}</button>
+                <span className="font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{selected.bbox.map((value) => Math.round(value)).join(',')}</span>
+                <button type="button" onClick={() => removeItem(selected.id)} className="ml-auto text-[var(--color-text-tertiary)] hover:text-red-400"><X className="size-3.5" /></button>
+              </div>
+              <Textarea value={selected.caption} onChange={(event) => setItem(selected.id, { caption: event.target.value })} placeholder="区域提示词" className="h-20 w-full resize-none" />
+              {selected.label === 'text' ? <Input value={selected.text ?? ''} onChange={(event) => setItem(selected.id, { text: event.target.value })} placeholder="图中文字" className="w-full border-amber-500/30" /> : null}
+              <label className="flex items-center gap-2 text-[9px] text-[var(--color-text-tertiary)]">不透明度<input type="range" min={0.1} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(event) => setItem(selected.id, { opacity: Number(event.target.value) })} className="flex-1 accent-[var(--color-accent)]" /></label>
+            </div>
+          ) : <div className="flex h-full items-center justify-center text-center text-[9.5px] text-[var(--color-text-tertiary)]">选中画布区域后在这里编辑图层</div>}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-4 pb-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold tracking-tight">MossStudio</h1>
-          <p className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-            写提示词、框选布局，再编译成 MOSS 的 layout JSON。独立 HTTP/WS 后端已接：开始生成会提交到共享 Supervisor/终端；Project 自动保存。
-          </p>
+    <div className="flex h-[calc(100vh-96px)] min-h-[620px] flex-col gap-2 overflow-hidden pb-2">
+      <div className="flex shrink-0 items-center gap-2 rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/80 px-2 py-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {orderedProjects.map((item) => {
+            const current = item.id === projectId
+            const status = current && projectSaving ? '保存中' : current ? '已保存' : '已保存'
+            return (
+              <button
+                key={item.id}
+                type="button"
+                draggable
+                onDragStart={() => setDragTab(item.id)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (!dragTab || dragTab === item.id) return
+                  setTabOrder((previous) => {
+                    const next = previous.filter((id) => id !== dragTab)
+                    const at = next.indexOf(item.id)
+                    next.splice(at < 0 ? next.length : at, 0, dragTab)
+                    return next
+                  })
+                  setDragTab(null)
+                }}
+                onClick={() => { if (!current) void openProject(item.id) }}
+                className={cn(
+                  'flex h-7 max-w-[210px] shrink-0 items-center gap-1.5 rounded-t-[5px] border-b-2 px-2.5 text-[10.5px] transition',
+                  current ? 'border-accent-400 bg-white/[0.07] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-secondary)] hover:bg-white/[0.04]',
+                )}
+                title={item.name}
+              >
+                <span className="truncate">{item.name || '未命名画布'}</span>
+                <span className={cn('shrink-0 text-[8px]', status === '保存中' ? 'text-amber-300' : 'text-[var(--color-text-tertiary)]')}>{status}</span>
+              </button>
+            )
+          })}
+          {!projectId ? (
+            <div className="flex h-7 shrink-0 items-center gap-1.5 rounded-t-[5px] border-b-2 border-accent-400 bg-white/[0.07] px-2.5 text-[10.5px]">
+              <span className="max-w-[180px] truncate">{projectName.trim() || '未命名画布'}</span>
+              <span className="text-[8px] text-amber-300">未保存</span>
+            </div>
+          ) : null}
+          {orderedProjects.length === 0 && projectId ? <span className="px-2 text-[9.5px] text-[var(--color-text-tertiary)]">还没有画布</span> : null}
         </div>
-        <div className="flex items-center gap-2">
-          {env ? <Pill tone="blue">{env.recommendation.width}² · {env.recommendation.steps} 步</Pill> : null}
-          <Pill tone={backend?.ready ? 'accent' : 'amber'}>{backend?.ready ? 'Clover 后端就绪' : '后端启动中'}</Pill>
-          <Button tone="primary" onClick={() => void generate()}>
-            <span className="inline-flex items-center gap-1.5">
-              开始生成 <ArrowRight className="size-3.5" />
-            </span>
-          </Button>
-        </div>
-      </header>
+        <Button tone="secondary" onClick={newProject}><Plus className="size-3.5" /> 新建画布</Button>
+        {env ? <Pill tone="blue">{env.recommendation.width}² · {env.recommendation.steps} 步</Pill> : null}
+      </div>
 
-      <Card className="flex flex-wrap items-center gap-2 p-2.5">
-        <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Project</span>
-        <Select
-          value={projectId ?? ''}
-          onChange={(event) => { if (event.target.value) void openProject(event.target.value) }}
-          className="min-w-[180px]"
+      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] gap-2">
+        <aside
+          className="flex min-h-0 flex-col gap-2 overflow-y-auto pr-0.5"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'left') }}
         >
-          <option value="">未打开</option>
-          {projects.map((item) => <option key={item.id} value={item.id}>{item.name}{item.page ? ` · 第${item.page}页` : ''}</option>)}
-        </Select>
-        <Input
-          value={projectName}
-          onChange={(event) => setProjectName(event.target.value)}
-          placeholder="Project 名称"
-          className="min-w-[160px] flex-1"
-        />
-        <Input
-          value={seriesId}
-          onChange={(event) => setSeriesId(event.target.value)}
-          placeholder="系列 ID（可选）"
-          className="w-[130px]"
-        />
-        <span className="text-[9.5px] text-[var(--color-text-tertiary)]">第 {page} 页</span>
-        <Button
-          tone="ghost"
-          onClick={() => { if (previousSeriesPage) void openProject(previousSeriesPage.id) }}
-          disabled={!previousSeriesPage}
-        >
-          上一页
-        </Button>
-        <Button
-          tone="ghost"
-          onClick={() => { if (nextSeriesPage) void openProject(nextSeriesPage.id); else void newPage() }}
-        >
-          {nextSeriesPage ? '下一页' : '+ 新页'}
-        </Button>
-        <Button tone="ghost" onClick={newProject}>新建</Button>
-        <Button tone="secondary" onClick={() => void saveProjectNow()} disabled={projectSaving}>
-          <span className="inline-flex items-center gap-1.5">{projectSaving ? null : <Save className="size-3" />}保存</span>
-        </Button>
-        <span className="text-[9px] text-[var(--color-text-tertiary)]">{projectId ? '自动保存已开启' : '保存后开启自动保存'}</span>
-      </Card>
+          {docks.left.map((id) => (
+            <DockPanel key={id} id={id} dock="left" onDock={movePanel} title={{ prompt: '提示词', sampler: '生成参数', gallery: '图库', summary: '布局总览', layers: '图层' }[id]}>
+              {renderPanel(id)}
+            </DockPanel>
+          ))}
+          {docks.left.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
+        </aside>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[13px] font-semibold">提示词</h2>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => setSegmentsOpen(true)} className="text-[9.5px] text-accent-300 hover:underline">分段</button>
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">{prompt.length} 字符</span>
-              </div>
+        <section className="relative flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60">
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-2 py-1.5">
+            <Segmented label="画布工具" value={tool} onChange={(value) => setTool(value as 'select' | 'draw' | 'pan')} options={[{ value: 'select', label: '选择' }, { value: 'draw', label: '画框' }, { value: 'pan', label: '手型' }]} />
+            <Segmented value={label} onChange={(value) => setLabel(value as LayoutLabel)} options={[{ value: 'object', label: '物体' }, { value: 'character', label: '人物' }, { value: 'text', label: '文字' }]} />
+            <IconButton label="GBC 图像解析" onClick={() => setGbcOpen(true)}><ScanSearch className="size-3.5" /></IconButton>
+            <IconButton label="示例布局" onClick={() => { setDraft(exampleDraft()); setSelectedId(null) }}><Sparkles className="size-3.5" /></IconButton>
+            <IconButton label="清空画布" onClick={() => { setDraft(createDraft(draft.width, draft.height)); setSelectedId(null) }}><Eraser className="size-3.5" /></IconButton>
+            {background ? <IconButton label="清除底图" onClick={() => setStudioBackground(null)}><X className="size-3.5" /></IconButton> : null}
+            <div className="ml-auto flex items-center gap-1.5">
+              <Pill tone={backend?.ready ? 'accent' : 'amber'}>{backend?.ready ? '后端就绪' : '后端启动中'}</Pill>
+              <Button tone="primary" onClick={() => void generate()}><span className="inline-flex items-center gap-1.5">开始生成 <ArrowRight className="size-3.5" /></span></Button>
             </div>
-            <Textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              placeholder="描述画面、文字、风格与布局。也可以粘贴编译后的 layout JSON。"
-              className="mt-2.5 h-40 w-full resize-none leading-5"
-            />
-            <label className="mt-3 block text-[10.5px] text-[var(--color-text-tertiary)]">负面提示词</label>
-            <Input
-              value={negative}
-              onChange={(event) => setNegative(event.target.value)}
-              className="mt-1 w-full"
-            />
-          </Card>
+          </div>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[13px] font-semibold">布局总览</h2>
-              <Pill tone="neutral">abs · xyxy</Pill>
-            </div>
-            <label className="mt-2 block space-y-1">
-              <span className="text-[10px] text-[var(--color-text-tertiary)]">整体描述（summary.caption）</span>
-              <Textarea
-                value={draft.summary.caption}
-                onChange={(event) =>
-                  setDraft((previous) => ({
-                    ...previous,
-                    summary: { ...previous.summary, caption: event.target.value },
-                  }))
-                }
-                placeholder="一句话描述整张图的场景、风格与构图。"
-                className="h-20 w-full resize-none"
-              />
-            </label>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <label className="space-y-1">
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">meta（逗号分隔）</span>
-                <Input
-                  value={draft.summary.meta.join(', ')}
-                  onChange={(event) =>
-                    setDraft((previous) => ({
-                      ...previous,
-                      summary: {
-                        ...previous.summary,
-                        meta: event.target.value
-                          .split(',')
-                          .map((value) => value.trim())
-                          .filter(Boolean),
-                      },
-                    }))
-                  }
-                  placeholder="poster, typography"
-                  className="w-full"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">canvas</span>
-                <Select
-                  value={draft.summary.canvas}
-                  onChange={(event) =>
-                    setDraft((previous) => ({
-                      ...previous,
-                      summary: {
-                        ...previous.summary,
-                        canvas: event.target.value as LayoutDraft['summary']['canvas'],
-                      },
-                    }))
-                  }
-                  className="w-full"
-                >
-                  <option value="single">single</option>
-                  <option value="multi_panel">multi_panel</option>
-                  <option value="collage">collage</option>
-                </Select>
-              </label>
-            </div>
-            <Button tone="primary" className="mt-3" onClick={compile}>
-              <span className="inline-flex items-center gap-1.5">
-                <SquareDashedMousePointer className="size-3.5" /> 编译布局 Prompt
-              </span>
-            </Button>
-            <p className="mt-2 text-[9.5px] leading-4 text-[var(--color-text-tertiary)]">
-              编译会按官方规则转换为中心原点 + yxyx，并校验画布、区域与文字；失败时会指出具体区域。
-            </p>
-          </Card>
-
-          <Card className="p-4">
-            <h2 className="text-[13px] font-semibold">画布与采样</h2>
-            <div className="mt-3 flex flex-wrap gap-1">
-              {SIZE_PRESETS.map(([name, width, height]) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => changeSize(width, height)}
-                  className={cn(
-                    'rounded-full border px-2.5 py-1 text-[10.5px] transition',
-                    draft.width === width && draft.height === height
-                      ? 'border-accent-500/40 bg-accent-500/12 text-accent-700 dark:text-accent-200'
-                      : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-accent-400/40',
-                  )}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <label className="space-y-1">
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">宽度（16 倍数）</span>
-                <Input
-                  type="number"
-                  min={256}
-                  max={2048}
-                  step={16}
-                  value={draft.width}
-                  onChange={(event) => changeSize(Number(event.target.value) || draft.width, draft.height)}
-                  className="w-full"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">高度（16 倍数）</span>
-                <Input
-                  type="number"
-                  min={256}
-                  max={2048}
-                  step={16}
-                  value={draft.height}
-                  onChange={(event) => changeSize(draft.width, Number(event.target.value) || draft.height)}
-                  className="w-full"
-                />
-              </label>
-            </div>
-            <div className="mt-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10.5px] text-[var(--color-text-secondary)]">步数</span>
-                <Segmented
-                  label="采样步数"
-                  value={String(steps)}
-                  onChange={(value) => setSteps(Number(value))}
-                  options={[
-                    { value: '8', label: '8 DMD' },
-                    { value: '20', label: '20' },
-                    { value: '50', label: '50' },
-                  ]}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span className="text-[10px] text-[var(--color-text-tertiary)]">CFG</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={20}
-                    step={0.5}
-                    value={cfg}
-                    onChange={(event) => setCfg(Number(event.target.value))}
-                    className="w-full"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] text-[var(--color-text-tertiary)]">Seed</span>
-                  <Input
-                    type="number"
-                    value={seed}
-                    onChange={(event) => setSeed(Number(event.target.value))}
-                    className="w-full"
-                  />
-                </label>
-              </div>
-              <label className="block space-y-1">
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">实例</span>
-                <Select
-                  value={instanceId}
-                  onChange={(event) => setInstanceId(event.target.value)}
-                  className="w-full"
-                >
-                  {instances.length === 0 ? <option value="">尚未创建实例</option> : null}
-                  {instances.map((instance: InstanceInfo) => (
-                    <option key={instance.id} value={instance.id}>
-                      {instance.name} · {instance.runtimeState === 'ready' ? '就绪' : '未装依赖'}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-subtle)] px-4 py-2.5">
-              <div className="flex items-center gap-2">
-                <Layers className="size-3.5 text-accent-500" />
-                <span className="text-[12.5px] font-medium">布局画布</span>
-                <span className="text-[10px] text-[var(--color-text-tertiary)]">
-                  {draft.width} × {draft.height} · {draft.items.length} 个区域
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Segmented
-                  label="画布工具"
-                  value={tool}
-                  onChange={(value) => setTool(value as 'select' | 'draw')}
-                  options={[
-                    { value: 'select', label: '选择' },
-                    { value: 'draw', label: '画框' },
-                  ]}
-                />
-                <Segmented
-                  value={label}
-                  onChange={(value) => setLabel(value as LayoutLabel)}
-                  options={[
-                    { value: 'object', label: '物体' },
-                    { value: 'character', label: '人物' },
-                    { value: 'text', label: '文字' },
-                  ]}
-                />
-                <IconButton label="GBC 图像解析" onClick={() => setGbcOpen(true)}>
-                  <ScanSearch className="size-3.5" />
-                </IconButton>
-                <IconButton label="示例布局" onClick={() => { setDraft(exampleDraft()); setSelectedId(null) }}>
-                  <Sparkles className="size-3.5" />
-                </IconButton>
-                <IconButton label="清空画布" onClick={() => { setDraft(createDraft(draft.width, draft.height)); setSelectedId(null) }}>
-                  <Eraser className="size-3.5" />
-                </IconButton>
-                {background ? (
-                  <IconButton label="清除底图" onClick={() => setStudioBackground(null)}>
-                    <X className="size-3.5" />
-                  </IconButton>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="p-3">
-              <div
+          <div
+            className="relative min-h-0 flex-1 overflow-hidden bg-[#121419]"
+            onWheel={(event) => { event.preventDefault(); setZoom((value) => Math.min(2.5, Math.max(0.3, value - event.deltaY * 0.001))) }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'float') }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} className="relative w-full max-w-[820px]">
+                              <div
                 ref={canvasRef}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
@@ -939,97 +895,35 @@ export function StudioPage(): React.JSX.Element {
                   />
                 ) : null}
               </div>
-              <p className="mt-2 text-[10px] text-[var(--color-text-tertiary)]">
-                拖拽空白处画框；点击框选中，拖动移动，右下角圆点缩放。文字区域需要填写显示内容。
-              </p>
-            </div>
-          </Card>
-
-          <Card className="flex h-[248px] flex-col overflow-hidden p-0">
-            <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-2">
-              <div className="flex items-center gap-2">
-                <h2 className="text-[13px] font-semibold">区域</h2>
-                <span className="text-[9.5px] text-[var(--color-text-tertiary)]">{draft.items.length} 个 · 横向标签</span>
               </div>
-              <Button tone="ghost" onClick={() => { setTool('draw'); setSelectedId(null) }}>
-                <span className="inline-flex items-center gap-1.5"><SquareDashedMousePointer className="size-3.5" /> 画新框</span>
-              </Button>
             </div>
-
-            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)] px-2 py-1.5">
-              {draft.items.map((item, index) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedId(item.id)}
-                  className={cn(
-                    'flex max-w-[160px] shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[9.5px] transition',
-                    item.id === selectedId
-                      ? 'border-accent-500/50 bg-accent-500/12 text-accent-200'
-                      : 'border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:border-accent-400/40',
-                  )}
-                  title={item.caption || `区域 ${index + 1}`}
-                >
-                  <span className="font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{index + 1}</span>
-                  <span className="truncate">{item.caption || LABEL_META[item.label].name}</span>
-                  {item.visible === false ? <EyeOff className="size-2.5 shrink-0" /> : null}
-                  {item.locked ? <Lock className="size-2.5 shrink-0" /> : null}
-                </button>
-              ))}
-              {draft.items.length === 0 ? <span className="px-2 py-1 text-[9.5px] text-[var(--color-text-tertiary)]">用“画新框”在画布上拖出一个矩形</span> : null}
+            <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/45 px-2.5 py-1 text-[8.5px] text-white/55">
+              {Math.round(zoom * 100)}% · 滚轮缩放 · 手型/中键拖动
             </div>
+            {docks.float.length > 0 ? (
+              <div className="absolute right-2 top-2 z-20 flex max-h-[82%] w-[290px] flex-col gap-2 overflow-y-auto">
+                {docks.float.map((id) => (
+                  <DockPanel key={id} id={id} dock="float" onDock={movePanel} title={{ prompt: '提示词', sampler: '生成参数', gallery: '图库', summary: '布局总览', layers: '图层' }[id]}>
+                    {renderPanel(id)}
+                  </DockPanel>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
-              {selected ? (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Select
-                      value={selected.label}
-                      onChange={(event) => setItem(selected.id, { label: event.target.value as LayoutLabel })}
-                      className="w-[86px]"
-                    >
-                      <option value="object">物体</option>
-                      <option value="character">人物</option>
-                      <option value="text">文字</option>
-                    </Select>
-                    <button type="button" onClick={() => setItem(selected.id, { visible: selected.visible === false })} className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]" title={selected.visible === false ? '显示区域' : '隐藏区域'}>
-                      {selected.visible === false ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                    </button>
-                    <button type="button" onClick={() => setItem(selected.id, { locked: !selected.locked })} className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]" title={selected.locked ? '解锁区域' : '锁定区域'}>
-                      {selected.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
-                    </button>
-                    <span className="font-mono text-[9px] text-[var(--color-text-tertiary)]">{selected.bbox.map((value) => Math.round(value)).join(', ')}</span>
-                    <div className="ml-auto flex items-center gap-2">
-                      <span className="text-[9px] text-[var(--color-text-tertiary)]">不透明度</span>
-                      <input type="range" min={0.1} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(event) => setItem(selected.id, { opacity: Number(event.target.value) })} className="h-1 w-24 accent-[var(--color-accent)]" />
-                      <span className="w-8 text-right text-[9px] text-[var(--color-text-tertiary)]">{Math.round((selected.opacity ?? 1) * 100)}%</span>
-                      <button type="button" onClick={() => removeItem(selected.id)} className="text-[var(--color-text-tertiary)] hover:text-red-400"><X className="size-3.5" /></button>
-                    </div>
-                  </div>
-                  <Textarea
-                    value={selected.caption}
-                    onChange={(event) => setItem(selected.id, { caption: event.target.value })}
-                    placeholder="详细描述这个区域的外观、材质、动作…（画布框内也可直接编辑）"
-                    className="h-[58px] w-full resize-none"
-                  />
-                  {selected.label === 'text' ? (
-                    <Input
-                      value={selected.text ?? ''}
-                      onChange={(event) => setItem(selected.id, { text: event.target.value })}
-                      placeholder="要渲染的文字"
-                      className="w-full border-amber-500/30 bg-amber-500/[0.05] focus:border-amber-500"
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center text-center text-[10.5px] text-[var(--color-text-tertiary)]">
-                  点上方区域标签，或直接在画布框内编辑；切换区域不会拉长页面。
-                </div>
-              )}
-            </div>
-          </Card>
-
-        </div>
+        <aside
+          className="flex min-h-0 flex-col gap-2 overflow-y-auto pl-0.5"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'right') }}
+        >
+          {docks.right.map((id) => (
+            <DockPanel key={id} id={id} dock="right" onDock={movePanel} title={{ prompt: '提示词', sampler: '生成参数', gallery: '图库', summary: '布局总览', layers: '图层' }[id]}>
+              {renderPanel(id)}
+            </DockPanel>
+          ))}
+          {docks.right.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
+        </aside>
       </div>
 
       <Modal

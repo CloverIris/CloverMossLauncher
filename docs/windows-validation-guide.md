@@ -4,7 +4,7 @@
 
 ## 1. 当前边界
 
-- 桌面应用基于 Electron；五个产品窗口共用 renderer：启动器、创作、终端、Kohaku Trainer、设备管理器。
+- 桌面应用基于 Electron；两个产品窗口共用 renderer：MossStudio（含工作台管理覆盖层与终端抽屉）、Kohaku Trainer。
 - Windows 窗口标题栏、PowerShell 环境探测、Python/uv 路径及本机 Trainer `.cmd` / PowerShell 脚本有对应代码路径，仍需在真实 Windows 主机验证。
 - SSH 远端流程面向 Linux host；Windows 桌面端使用系统 OpenSSH，远端命令仍依赖 Linux/POSIX shell。
 - MOSS-Image 真实生成需要完整运行时与模型权重；Trainer 真实训练、导出和采样需要 NVIDIA CUDA 环境。

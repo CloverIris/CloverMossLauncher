@@ -1,19 +1,18 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 
-export type WindowKind = 'launcher' | 'creator' | 'terminal' | 'trainer' | 'devices'
+export type WindowKind = 'studio' | 'trainer'
 
 const windows = new Map<WindowKind, BrowserWindow>()
 const isDev = !app.isPackaged
 const screenshot = process.argv.includes('--screenshot')
+const smoke = process.argv.includes('--smoke')
 
 const config: Record<WindowKind, { width: number; height: number; minWidth: number; minHeight: number; route: string; title: string }> = {
-  launcher: { width: 1180, height: 760, minWidth: 960, minHeight: 640, route: '/', title: 'MossStudio' },
-  creator: { width: 1600, height: 920, minWidth: 1200, minHeight: 720, route: '/studio', title: 'MossStudio' },
-  terminal: { width: 1120, height: 720, minWidth: 900, minHeight: 560, route: '/terminal', title: 'MossStudio Terminal' },
+  studio: { width: 1600, height: 1000, minWidth: 1280, minHeight: 760, route: '/studio', title: 'MossStudio' },
   trainer: { width: 1280, height: 840, minWidth: 980, minHeight: 640, route: '/trainer', title: 'Kohaku Trainer' },
-  devices: { width: 1180, height: 780, minWidth: 960, minHeight: 640, route: '/devices', title: 'MossStudio Devices' },
 }
+
 
 export function createAppWindow(kind: WindowKind, show = true): BrowserWindow {
   const existing = windows.get(kind)
@@ -59,7 +58,10 @@ export function createAppWindow(kind: WindowKind, show = true): BrowserWindow {
   })
 
   win.once('ready-to-show', () => {
-    if (show) win.show()
+    if (!show) return
+    win.show()
+    // Big creative workspace, not an OS-level fullscreen takeover.
+    if (kind === 'studio' && !screenshot && !smoke) win.center()
   })
 
   win.webContents.on('console-message', (...args: unknown[]) => {
@@ -101,6 +103,14 @@ export function createAppWindow(kind: WindowKind, show = true): BrowserWindow {
 }
 
 export function openWindow(kind: WindowKind, route?: string): BrowserWindow {
+  const existing = getWindow(kind)
+  if (existing) {
+    if (existing.isMinimized()) existing.restore()
+    existing.show()
+    existing.focus()
+    if (route) void existing.webContents.executeJavaScript(`location.hash = '#${route}'`)
+    return existing
+  }
   const win = createAppWindow(kind)
   if (route) {
     const apply = (): void => {

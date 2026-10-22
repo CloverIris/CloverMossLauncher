@@ -805,7 +805,7 @@ exit 0
       app.exit(1)
       return
     }
-    const win = createAppWindow('launcher', false)
+    const win = createAppWindow('studio', false)
     await new Promise<void>((resolve) => win.webContents.once('did-finish-load', () => resolve()))
     const result = await win.webContents.executeJavaScript(`fetch(${JSON.stringify(`${backend.url}/api/jobs`)}, { headers: { authorization: 'Bearer ${backend.token}' } }).then(async (res) => ({ status: res.status, count: (await res.json()).length })).catch((error) => ({ error: String(error) }))`)
     const [instance] = await listInstances()
@@ -1270,17 +1270,14 @@ exit 0
   }
 
   if (scenario === 'windows') {
-    const launcher = createAppWindow('launcher', false)
-    await new Promise<void>((resolve) => launcher.webContents.once('did-finish-load', () => resolve()))
+    const studio = createAppWindow('studio', false)
+    await new Promise<void>((resolve) => studio.webContents.once('did-finish-load', () => resolve()))
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    await launcher.webContents.executeJavaScript("window.clover.invoke('window:open', { kind: 'creator' })")
+    await studio.webContents.executeJavaScript("window.clover.invoke('window:open', { kind: 'trainer' })")
     await new Promise((resolve) => setTimeout(resolve, 1500))
-    const creator = Boolean(getWindow('creator'))
-    await launcher.webContents.executeJavaScript("window.clover.invoke('window:open', { kind: 'terminal' })")
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    const terminal = Boolean(getWindow('terminal'))
-    console.log(JSON.stringify({ scenario: 'windows', creator, terminal }, null, 2))
-    app.exit(creator && terminal ? 0 : 1)
+    const trainer = Boolean(getWindow('trainer'))
+    console.log(JSON.stringify({ scenario: 'windows', studio: Boolean(getWindow('studio')), trainer }, null, 2))
+    app.exit(Boolean(getWindow('studio')) && trainer ? 0 : 1)
     return
   }
 
@@ -1315,7 +1312,7 @@ exit 0
     )
     process.env['CLOVER_RELEASE_FILE'] = file
     updateSettings({ autoCheckUpdates: true, dismissedUpdateVersion: null })
-    const win = createAppWindow('launcher', false)
+    const win = createAppWindow('studio', false)
     await new Promise<void>((resolve) => win.webContents.once('did-finish-load', () => resolve()))
     await new Promise((resolve) => setTimeout(resolve, 4500))
     await win.webContents.executeJavaScript(
@@ -1330,87 +1327,42 @@ exit 0
   }
 
   if (screenshot) {
-    const launcher = createAppWindow('launcher', false)
-    await new Promise<void>((resolve) => launcher.webContents.once('did-finish-load', () => resolve()))
-    await new Promise((resolve) => setTimeout(resolve, 4500))
-    const oobe = await launcher.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-oobe.png'), oobe.toPNG())
-    await launcher.webContents.executeJavaScript(
-      "[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '本次跳过')?.click()",
-    )
-    await new Promise((resolve) => setTimeout(resolve, 700))
-    const home = await launcher.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-home.png'), home.toPNG())
-    await launcher.webContents.executeJavaScript(
-      "[...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '隐藏通知')?.click()",
-    )
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    const cleanHome = await launcher.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-home-clean.png'), cleanHome.toPNG())
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    await launcher.webContents.executeJavaScript(
-      "[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '启动')?.click()",
-    )
-    await new Promise((resolve) => setTimeout(resolve, 1600))
-    const launch = await launcher.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-launch.png'), launch.toPNG())
+    const studio = createAppWindow('studio', false)
+    await new Promise<void>((resolve) => studio.webContents.once('did-finish-load', () => resolve()))
+    await new Promise((resolve) => setTimeout(resolve, 2600))
+    const studioShot = await studio.webContents.capturePage()
+    writeFileSync(join(app.getPath('userData'), 'screenshot-studio.png'), studioShot.toPNG())
 
     const routes: Array<[string, string]> = [
       ['/instances', 'instances'],
-      ['/instances/moss-main-9d799c1', 'instance-detail'],
-      ['/diagnostics', 'diagnostics'],
-      ['/gallery', 'gallery-launcher'],
-      ['/training', 'training'],
       ['/models', 'models'],
+      ['/devices', 'devices'],
+      ['/training', 'training'],
+      ['/gallery', 'gallery'],
+      ['/diagnostics', 'diagnostics'],
       ['/settings', 'settings'],
     ]
     for (const [route, name] of routes) {
-      await launcher.webContents.executeJavaScript(`location.hash = '#${route}'`)
-      await new Promise((resolve) => setTimeout(resolve, route === '/training' ? 2800 : 900))
-      const image = await launcher.webContents.capturePage()
+      await studio.webContents.executeJavaScript(`location.hash = '#${route}'`)
+      await new Promise((resolve) => setTimeout(resolve, route === '/training' ? 2200 : 900))
+      const image = await studio.webContents.capturePage()
       writeFileSync(join(app.getPath('userData'), `screenshot-${name}.png`), image.toPNG())
     }
 
-    const creator = createAppWindow('creator', false)
-    await new Promise<void>((resolve) => creator.webContents.once('did-finish-load', () => resolve()))
-    await new Promise((resolve) => setTimeout(resolve, 2200))
-    const studio = await creator.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-studio.png'), studio.toPNG())
-    await creator.webContents.executeJavaScript("location.hash = '#/gallery'")
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    const gallery = await creator.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-gallery.png'), gallery.toPNG())
-
-    const terminal = createAppWindow('terminal', false)
-    await new Promise<void>((resolve) => terminal.webContents.once('did-finish-load', () => resolve()))
-    await new Promise((resolve) => setTimeout(resolve, 5000))
-    const terminalShot = await terminal.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-terminal.png'), terminalShot.toPNG())
-
     const trainer = createAppWindow('trainer', false)
     await new Promise<void>((resolve) => trainer.webContents.once('did-finish-load', () => resolve()))
-    await new Promise((resolve) => setTimeout(resolve, 3000))
+    await new Promise((resolve) => setTimeout(resolve, 2200))
     const trainerShot = await trainer.webContents.capturePage()
     writeFileSync(join(app.getPath('userData'), 'screenshot-trainer.png'), trainerShot.toPNG())
-
-    const devices = createAppWindow('devices', false)
-    await new Promise<void>((resolve) => devices.webContents.once('did-finish-load', () => resolve()))
-    await new Promise((resolve) => setTimeout(resolve, 2800))
-    await devices.webContents.executeJavaScript(
-      "[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Fake Remote Instance') && b.textContent.includes('1 设备'))?.click()",
-    )
-    await new Promise((resolve) => setTimeout(resolve, 600))
-    const devicesShot = await devices.webContents.capturePage()
-    writeFileSync(join(app.getPath('userData'), 'screenshot-devices.png'), devicesShot.toPNG())
 
     console.log('screenshots written to', app.getPath('userData'))
     app.exit(0)
     return
   }
 
-  createAppWindow('launcher')
+  createAppWindow('studio')
   app.on('activate', () => {
-    openWindow('launcher')
+    openWindow('studio')
   })
 })
 

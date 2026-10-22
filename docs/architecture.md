@@ -36,11 +36,8 @@ Electron Main (Node)
 │             supervisor / diagnostics / trainerGit / trainers / trainingHosts）
 ├── ipc.ts（ipcMain.handle + zod）
 └── BrowserWindow × 5
-    ├── launcher   /            1180×760
-    ├── creator    /studio      1320×860
-    ├── terminal   /terminal    1120×720
-    ├── trainer    /trainer     1280×840
-    └── devices    /devices     1180×780
+    ├── studio     /studio      1600×1000
+    └── trainer    /trainer     1280×840
          ↕ preload（contextBridge）
     React 19 renderer（同一 bundle；按 windowKind 分流）
 
@@ -52,7 +49,7 @@ UtilityProcess
   暴露 `windowKind`；
 - `src/main/windows.ts` 负责创建/单例/聚焦/关闭；`window:open` 可打开指定
   kind 与 route；
-- 启动器关闭不会主动关闭其它已打开窗口；所有窗口关闭后按平台退出；
+- Studio 关闭后仍可按平台激活；所有窗口关闭后按平台退出；
 - macOS：`hiddenInset` + `vibrancy: under-window`；
   Windows：`hidden` + `titleBarOverlay` + acrylic；Linux 默认；
 - 截图模式使用不透明 `#191b1f`；普通桌面窗口启用亚克力。
@@ -453,12 +450,12 @@ env -u ELECTRON_RUN_AS_NODE \
 
 | 场景 | 作用 |
 | --- | --- |
-| `--screenshot` | 启动器各路由 + 创作 + 终端 + 训练窗口截图 |
+| `--screenshot` | Studio、工作台管理页与 Trainer 截图 |
 | `--scenario=create` / `second` / `install` | 实例/共享 runtime/依赖 |
 | `--scenario=job` / `job-cancel` | 模拟推理、取消 |
 | `--scenario=parser` | tqdm/OOM/缺包解析 |
 | `--scenario=job-real` | 缺权重预检 |
-| `--scenario=windows` | 通过 IPC 打开创作/终端窗口 |
+| `--scenario=windows` | Studio 内打开 Trainer 的窗口场景 |
 | `--scenario=trainer-deploy` | trainer clone + worktree |
 | `--scenario=trainer-job` | 模拟训练 Job + step/loss |
 | `--scenario=trainer-host` | SSH host 保存/读取/删除 |

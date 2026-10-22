@@ -83,3 +83,5 @@ README、公告（`release/README.md`）是面向用户的摘要，不替代 sta
 | Windows | 未实机验证 |
 
 因此，涉及 CUDA、真实权重、Windows 的结论只能标 🟡 或 ⬜。
+
+- [ADR-0008：单 Studio 窗口、工作台覆盖层与可停靠面板](decisions/0008-studio-window-and-dock.md)

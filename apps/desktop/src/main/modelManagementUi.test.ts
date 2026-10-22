@@ -57,7 +57,7 @@ export async function runModelManagementUi(): Promise<void> {
   mock(Ipc.onboardingStatus, { ready: true, steps: [], checkedAt: '' })
   mock(Ipc.runtimeState, null)
   mock(Ipc.gitCommits, [])
-  const win = createAppWindow('launcher', false)
+  const win = createAppWindow('studio', false)
   win.webContents.setBackgroundThrottling(false)
   await new Promise<void>((done) => win.webContents.once('did-finish-load', () => done()))
   const execute = (script: string): Promise<any> => win.webContents.executeJavaScript(script)
