@@ -55,6 +55,8 @@ export const Ipc = {
   aiConversations: 'ai:conversations',
   aiConversationRemove: 'ai:conversation-remove',
   aiChat: 'ai:chat',
+  gbcStatus: 'gbc:status',
+  gbcRun: 'gbc:run',
   announcementsDismiss: 'announcements:dismiss',
   gitBranches: 'git:branches',
   gitCommits: 'git:commits',

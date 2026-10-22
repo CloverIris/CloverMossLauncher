@@ -42,6 +42,11 @@ function save(store: Store): void {
   writeFileSync(file(), JSON.stringify(store, null, 2), 'utf8')
 }
 
+export function getProviderSecret(id: string): { kind: string; baseUrl: string; model: string; apiKey: string } | null {
+  const provider = load().providers.find((item) => item.id === id)
+  return provider ? { kind: provider.kind, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey } : null
+}
+
 function publicProvider(provider: StoredProvider): AiProviderInfo {
   const { apiKey: _apiKey, ...rest } = provider
   return { ...rest, hasKey: Boolean(provider.apiKey) }

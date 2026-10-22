@@ -9,6 +9,7 @@ import { runModelManagementUi } from './modelManagementUi.test'
 import { ensureDirs, paths } from './lib/paths'
 import { getBackendInfo, getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { listProviders, removeProvider, saveProvider } from './services/ai'
+import { gbcStatus } from './services/gbc'
 import type { JobRecord } from '@shared/types'
 import { compareSemver, findInstaller, parseReleaseMarkdown } from '@shared/release'
 import { downloadUpdate } from './services/updateDownload'
@@ -893,6 +894,13 @@ exit 0
     }
     console.log(JSON.stringify({ scenario: 'torch-index', platform: process.platform, auto, cpu, cuda: cuda ? 'https://download.pytorch.org/whl/cu128' : null, cudaError: cudaError.slice(0, 80) }, null, 2))
     app.exit(process.platform === 'darwin' ? (auto === null && cpu?.includes('/cpu') && Boolean(cudaError) ? 0 : 1) : (Boolean(auto) && Boolean(cpu) && Boolean(cuda) ? 0 : 1))
+    return
+  }
+
+  if (scenario === 'gbc-status') {
+    const status = await gbcStatus()
+    console.log(JSON.stringify({ scenario: 'gbc-status', ...status }, null, 2))
+    app.exit(status.available || status.error ? 0 : 1)
     return
   }
 

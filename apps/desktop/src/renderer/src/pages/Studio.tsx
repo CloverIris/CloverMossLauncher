@@ -6,6 +6,7 @@ import {
   ImagePlus,
   Layers,
   Sparkles,
+  ScanSearch,
   SquareDashedMousePointer,
   Type,
   UserRound,
@@ -35,6 +36,8 @@ import {
 import { useApp } from '../store'
 import { Button, Card, IconButton, Input, Modal, Pill, Segmented, Select, Textarea, cn, useToast } from '../components/ui'
 import { PromptSegmentsModal } from '../components/PromptSegmentsModal'
+import { GbcImportModal } from '../components/GbcImportModal'
+import type { GbcRunResult } from '@shared/gbc'
 
 const SIZE_PRESETS: Array<[string, number, number]> = [
   ['512²', 512, 512],
@@ -126,6 +129,7 @@ export function StudioPage(): React.JSX.Element {
   const [compiled, setCompiled] = useState<CompileResult | null>(null)
   const [jsonOpen, setJsonOpen] = useState(false)
   const [segmentsOpen, setSegmentsOpen] = useState(false)
+  const [gbcOpen, setGbcOpen] = useState(false)
   const [steps, setSteps] = useState(env?.recommendation.steps ?? 8)
   const [cfg, setCfg] = useState(env?.recommendation.profile === 'dmd8' ? 1 : 3)
   const [seed, setSeed] = useState(42)
@@ -457,6 +461,35 @@ export function StudioPage(): React.JSX.Element {
     } finally {
       setProjectSaving(false)
     }
+  }
+
+  function importGbc(result: GbcRunResult): void {
+    const items = result.vertices.flatMap((vertex) => {
+      if (!vertex.bbox) return []
+      const caption = vertex.descs?.find((desc) => desc.text)?.text?.trim() ?? ''
+      const label: LayoutLabel = /\b(girl|boy|woman|man|person|character)\b/i.test(caption) ? 'character' : 'object'
+      const bbox = clampBox([
+        Math.round(vertex.bbox.left * draft.width),
+        Math.round(vertex.bbox.top * draft.height),
+        Math.round(vertex.bbox.right * draft.width),
+        Math.round(vertex.bbox.bottom * draft.height),
+      ], draft.width, draft.height)
+      return [{
+        id: crypto.randomUUID(),
+        label,
+        caption: caption || 'GBC 区域',
+        bbox,
+        visible: true,
+        locked: false,
+        opacity: 1,
+      }]
+    })
+    setDraft((previous) => ({
+      ...previous,
+      summary: { ...previous.summary, caption: previous.summary.caption || result.summary },
+      items: [...previous.items, ...items],
+    }))
+    toast.push(`已导入 ${items.length} 个 GBC 区域`, 'success')
   }
 
   async function generate(): Promise<void> {
@@ -795,6 +828,9 @@ export function StudioPage(): React.JSX.Element {
                     { value: 'text', label: '文字' },
                   ]}
                 />
+                <IconButton label="GBC 图像解析" onClick={() => setGbcOpen(true)}>
+                  <ScanSearch className="size-3.5" />
+                </IconButton>
                 <IconButton label="示例布局" onClick={() => { setDraft(exampleDraft()); setSelectedId(null) }}>
                   <Sparkles className="size-3.5" />
                 </IconButton>
@@ -1032,6 +1068,12 @@ export function StudioPage(): React.JSX.Element {
           <div className="mt-2 text-[11px] text-red-500">{compiled.errors.join('；')}</div>
         ) : null}
       </Modal>
+
+      <GbcImportModal
+        open={gbcOpen}
+        onClose={() => setGbcOpen(false)}
+        onImport={importGbc}
+      />
 
       <PromptSegmentsModal
         open={segmentsOpen}

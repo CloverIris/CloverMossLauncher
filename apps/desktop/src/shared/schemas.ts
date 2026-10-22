@@ -228,6 +228,12 @@ export const schemas = {
     temperature: z.number().min(0).max(2).optional(),
   }),
 
+  gbcRun: z.object({
+    folder: z.string().min(1).max(4096),
+    providerId: z.string().min(1).max(120),
+    detector: z.enum(['owlv2', 'sam3']).default('owlv2'),
+  }),
+
   aiChat: z.object({
     providerId: z.string().min(1).max(120),
     conversationId: z.string().max(120).optional(),

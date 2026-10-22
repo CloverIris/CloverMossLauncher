@@ -47,6 +47,7 @@ README、公告（`release/README.md`）是面向用户的摘要，不替代 sta
 | [release-and-updates.md](release-and-updates.md) | GitHub Release 发布源、release.md 契约、更新下载 | 当前 |
 | [toolchain-and-onboarding.md](toolchain-and-onboarding.md) | 系统 Git/Python 扫描、安装引导、OOBE 工具链准备 | 设计已确认，未实现 |
 | [agent-and-prompt.md](agent-and-prompt.md) | Agent、AI Provider、提示词分段/确认、数据边界 | 当前基座 |
+| [gbc-integration.md](gbc-integration.md) | KohakuGBC/Togeari 解析桥、导入画布与限制 | 代码桥已接，真实验收待做 |
 | [model-notes.md](model-notes.md) | MOSS-Image 模型结构、预算、采样约定 | 参考资料 |
 | [research/upstream-survey.md](research/upstream-survey.md) | 上游项目调研 | 立项参考 |
 | [research/upstream-2026-10-20.md](research/upstream-2026-10-20.md) | 2026-10-20 上游 MOSS/Trainer 复查与兼容结论 | 当前研究 |

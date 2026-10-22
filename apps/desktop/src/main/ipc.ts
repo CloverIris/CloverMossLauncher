@@ -34,6 +34,7 @@ import { checkUpdates, dismissAnnouncement } from './services/updates'
 import { cancelUpdateDownload, downloadUpdate } from './services/updateDownload'
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
+import { gbcStatus, runGbc } from './services/gbc'
 import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
 import { openWindow } from './windows'
@@ -135,6 +136,10 @@ export function registerIpc(): void {
   })
 
   handle(Ipc.aiChat, schemas.aiChat, (input) => chat(input))
+
+  handle(Ipc.gbcStatus, null, () => gbcStatus())
+
+  handle(Ipc.gbcRun, schemas.gbcRun, (input) => runGbc(input))
 
   handle(Ipc.webAccessInfo, null, () => getWebAccessInfo())
 
