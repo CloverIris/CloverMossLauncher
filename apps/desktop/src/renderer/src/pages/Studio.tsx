@@ -6,6 +6,10 @@ import {
   Images,
   Maximize2,
   Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RotateCcw,
   Copy,
@@ -76,8 +80,8 @@ const PANEL_TITLES: Record<PanelId, string> = {
 
 const DEFAULT_DOCKS: Record<DockId, PanelId[]> = {
   left: ['prompt', 'sampler', 'gallery'],
-  right: ['layers', 'summary'],
-  float: ['agent'],
+  right: ['layers', 'summary', 'agent'],
+  float: [],
 }
 
 function DockPanel({
@@ -88,6 +92,7 @@ function DockPanel({
   children,
   className,
   style,
+  onResize,
 }: {
   id: PanelId
   title: string
@@ -96,6 +101,7 @@ function DockPanel({
   children: React.ReactNode
   className?: string
   style?: React.CSSProperties
+  onResize?: (event: React.PointerEvent<HTMLDivElement>) => void
 }): React.JSX.Element {
   return (
     <section
@@ -120,6 +126,13 @@ function DockPanel({
         {title}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {onResize ? (
+        <div
+          onPointerDown={onResize}
+          className="h-1.5 shrink-0 cursor-row-resize border-t border-white/[0.04] bg-white/[0.03] transition hover:border-accent-500/40 hover:bg-accent-500/10"
+          title="拖动调整卡片高度"
+        />
+      ) : null}
     </section>
   )
 }
@@ -242,6 +255,11 @@ export function StudioPage(): React.JSX.Element {
   const [segmentsOpen, setSegmentsOpen] = useState(false)
   const [gbcOpen, setGbcOpen] = useState(false)
   const [docks, setDocks] = useState(DEFAULT_DOCKS)
+  const [leftWidth, setLeftWidth] = useState(300)
+  const [rightWidth, setRightWidth] = useState(320)
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [panelHeights, setPanelHeights] = useState<Partial<Record<PanelId, number>>>({ agent: 360 })
   const [tabOrder, setTabOrder] = useState<string[]>([])
   const [draftTab, setDraftTab] = useState<DraftTabSnapshot | null>(null)
   const [dragTab, setDragTab] = useState<string | null>(null)
@@ -728,6 +746,39 @@ export function StudioPage(): React.JSX.Element {
       return next
     })
   }
+  function beginColumnResize(side: 'left' | 'right', event: React.PointerEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = side === 'left' ? leftWidth : rightWidth
+    const move = (moveEvent: PointerEvent): void => {
+      const delta = moveEvent.clientX - startX
+      if (side === 'left') setLeftWidth(Math.min(520, Math.max(220, startWidth + delta)))
+      else setRightWidth(Math.min(520, Math.max(220, startWidth - delta)))
+    }
+    const up = (): void => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  function beginPanelResize(id: PanelId, event: React.PointerEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    const element = (event.currentTarget.parentElement as HTMLElement | null)
+    const startY = event.clientY
+    const startHeight = element?.getBoundingClientRect().height ?? 240
+    const move = (moveEvent: PointerEvent): void => {
+      const height = Math.min(720, Math.max(100, startHeight + moveEvent.clientY - startY))
+      setPanelHeights((previous) => ({ ...previous, [id]: height }))
+    }
+    const up = (): void => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   function zoomAt(clientX: number, clientY: number, factor: number): void {
     const rect = viewportRef.current?.getBoundingClientRect()
     if (!rect) return
@@ -754,6 +805,11 @@ export function StudioPage(): React.JSX.Element {
     setPan({ x: panRef.current.ox + event.clientX - panRef.current.x, y: panRef.current.oy + event.clientY - panRef.current.y })
   }
   function endPan(): void { panRef.current = null }
+  function panelStyle(id: PanelId): React.CSSProperties {
+    const height = panelHeights[id]
+    return height ? { flex: 'none', height } : { flex: '1 1 0%' }
+  }
+
   function renderPanel(id: PanelId): React.JSX.Element {
     if (id === 'prompt') return (
       <div className="space-y-2 p-3">
@@ -867,19 +923,36 @@ export function StudioPage(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden pb-1">
 
-      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] gap-2">
-        <aside
-          className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto pr-0.5"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'left') }}
-        >
+      <div className="flex min-h-0 flex-1 gap-0">
+        {leftCollapsed ? (
+          <button type="button" onClick={() => setLeftCollapsed(false)} className="flex w-6 shrink-0 items-start justify-center border-r border-[var(--color-border-subtle)] pt-2 text-[var(--color-text-tertiary)] hover:bg-white/[0.04] hover:text-[var(--color-text)]" title="展开左栏">
+            <PanelLeftOpen className="size-3.5" />
+          </button>
+        ) : (
+          <>
+            <aside
+              style={{ width: leftWidth }}
+              className="relative flex h-full min-h-0 shrink-0 flex-col gap-2 overflow-y-auto pr-0.5"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'left') }}
+            >
+              <button type="button" onClick={() => setLeftCollapsed(true)} className="absolute right-1 top-1 z-10 rounded p-0.5 text-[var(--color-text-tertiary)] hover:bg-white/[0.06] hover:text-[var(--color-text)]" title="收起左栏">
+                <PanelLeftClose className="size-3.5" />
+              </button>
           {docks.left.map((id) => (
-            <DockPanel key={id} id={id} dock="left" onDock={movePanel} className={id === 'gallery' ? 'h-[150px]' : ''} style={id === 'gallery' ? { flex: 'none' } : { flex: '1 1 0%' }} title={PANEL_TITLES[id]}>
+            <DockPanel key={id} id={id} dock="left" onDock={movePanel} className={id === 'gallery' && !panelHeights[id] ? 'h-[150px]' : ''} style={id === 'gallery' && !panelHeights[id] ? { flex: 'none', height: 150 } : panelStyle(id)} onResize={(event) => beginPanelResize(id, event)} title={PANEL_TITLES[id]}>
               {renderPanel(id)}
             </DockPanel>
           ))}
-          {docks.left.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
-        </aside>
+              {docks.left.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
+            </aside>
+            <div
+              onPointerDown={(event) => beginColumnResize('left', event)}
+              className="w-1.5 shrink-0 cursor-col-resize bg-white/[0.06] transition hover:bg-accent-400/40"
+              title="拖动调整左栏宽度"
+            />
+          </>
+        )}
 
         <section className="relative flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60">
       <div className="flex shrink-0 items-center gap-2 rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/80 px-2 py-1.5">
@@ -1069,27 +1142,46 @@ export function StudioPage(): React.JSX.Element {
             {docks.float.length > 0 ? (
               <div className="absolute right-2 top-2 z-20 flex max-h-[82%] w-[290px] flex-col gap-2 overflow-y-auto">
                 {docks.float.map((id) => (
-                  <DockPanel key={id} id={id} dock="float" onDock={movePanel} style={id === 'agent' ? { height: 320, flex: 'none' } : undefined} title={PANEL_TITLES[id]}>
-                    {renderPanel(id)}
-                  </DockPanel>
+                  <div key={id} className="min-h-[160px] min-w-[220px] resize overflow-auto" style={{ width: 320, height: id === 'agent' ? 360 : 300 }}>
+                    <DockPanel id={id} dock="float" onDock={movePanel} style={{ height: '100%', minHeight: 160 }} title={PANEL_TITLES[id]}>
+                      {renderPanel(id)}
+                    </DockPanel>
+                  </div>
                 ))}
               </div>
             ) : null}
           </div>
         </section>
 
-        <aside
-          className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto pl-0.5"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'right') }}
-        >
+        {rightCollapsed ? (
+          <button type="button" onClick={() => setRightCollapsed(false)} className="flex w-6 shrink-0 items-start justify-center border-l border-[var(--color-border-subtle)] pt-2 text-[var(--color-text-tertiary)] hover:bg-white/[0.04] hover:text-[var(--color-text)]" title="展开右栏">
+            <PanelRightOpen className="size-3.5" />
+          </button>
+        ) : (
+          <>
+            <div
+              onPointerDown={(event) => beginColumnResize('right', event)}
+              className="w-1.5 shrink-0 cursor-col-resize bg-white/[0.06] transition hover:bg-accent-400/40"
+              title="拖动调整右栏宽度"
+            />
+            <aside
+              style={{ width: rightWidth }}
+              className="relative flex h-full min-h-0 shrink-0 flex-col gap-2 overflow-y-auto pl-0.5"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'right') }}
+            >
+              <button type="button" onClick={() => setRightCollapsed(true)} className="absolute left-1 top-1 z-10 rounded p-0.5 text-[var(--color-text-tertiary)] hover:bg-white/[0.06] hover:text-[var(--color-text)]" title="收起右栏">
+                <PanelRightClose className="size-3.5" />
+              </button>
           {docks.right.map((id) => (
-            <DockPanel key={id} id={id} dock="right" onDock={movePanel} style={{ flex: '1 1 0%' }} title={PANEL_TITLES[id]}>
+            <DockPanel key={id} id={id} dock="right" onDock={movePanel} style={panelStyle(id)} onResize={(event) => beginPanelResize(id, event)} title={PANEL_TITLES[id]}>
               {renderPanel(id)}
             </DockPanel>
           ))}
-          {docks.right.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
-        </aside>
+              {docks.right.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
+            </aside>
+          </>
+        )}
       </div>
 
       <Modal
