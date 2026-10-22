@@ -306,6 +306,18 @@ export function StudioPage(): React.JSX.Element {
   }, [projectId, snapshot])
 
   const selected = draft.items.find((item) => item.id === selectedId) ?? null
+  const layerRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const focusLayerRef = useRef(false)
+  useEffect(() => {
+    if (!selectedId) return
+    const element = layerRefs.current[selectedId]
+    if (!element) return
+    element.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    if (focusLayerRef.current) {
+      focusLayerRef.current = false
+      requestAnimationFrame(() => element.querySelector('textarea')?.focus())
+    }
+  }, [selectedId, draft.items.length])
   const seriesProjects = seriesId
     ? projects.filter((item) => item.seriesId === seriesId).sort((a, b) => (a.page ?? 1) - (b.page ?? 1))
     : []
@@ -786,33 +798,74 @@ export function StudioPage(): React.JSX.Element {
     if (id === 'gallery') return <MiniGallery />
     if (id === 'agent') return <AgentSidebar embedded />
     return (
-      <div className="flex h-full flex-col">
-        <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)] p-1.5">
-          {draft.items.map((item, index) => <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className={cn('flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[9px]', item.id === selectedId ? 'border-accent-500/50 bg-accent-500/12 text-accent-200' : 'border-[var(--color-border-subtle)]')}>{index + 1}<span className="max-w-[80px] truncate">{item.caption || LABEL_META[item.label].name}</span></button>)}
-          <Button tone="ghost" onClick={() => { setTool('draw'); setSelectedId(null) }}><Plus className="size-3" />框</Button>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] px-2 py-1.5">
+          <span className="text-[9px] text-[var(--color-text-tertiary)]">{draft.items.length} 个图层</span>
+          <Button tone="ghost" onClick={() => { setTool('draw'); setSelectedId(null) }}><Plus className="size-3" /> 画新框</Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {selected ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Select value={selected.label} onChange={(event) => setItem(selected.id, { label: event.target.value as LayoutLabel })} className="w-[76px]"><option value="object">物体</option><option value="character">人物</option><option value="text">文字</option></Select>
-                <button type="button" onClick={() => setItem(selected.id, { visible: selected.visible === false })} title="显示/隐藏">{selected.visible === false ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</button>
-                <button type="button" onClick={() => setItem(selected.id, { locked: !selected.locked })} title="锁定">{selected.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}</button>
-                <span className="font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{selected.bbox.map((value) => Math.round(value)).join(',')}</span>
-                <button type="button" onClick={() => removeItem(selected.id)} className="ml-auto text-[var(--color-text-tertiary)] hover:text-red-400"><X className="size-3.5" /></button>
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5">
+          {draft.items.map((item, index) => {
+            const isSelected = item.id === selectedId
+            const meta = LABEL_META[item.label]
+            return (
+              <div
+                key={item.id}
+                ref={(element) => { layerRefs.current[item.id] = element }}
+                data-layer-id={item.id}
+                tabIndex={-1}
+                onClick={() => { focusLayerRef.current = true; setSelectedId(item.id) }}
+                className={cn(
+                  'overflow-hidden rounded-[5px] border transition',
+                  isSelected ? 'border-accent-500/55 bg-accent-500/[0.07]' : 'border-[var(--color-border-subtle)] bg-white/[0.02] hover:border-accent-400/30',
+                )}
+              >
+                <div className="flex items-start gap-1.5 px-2 py-1.5">
+                  <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-[3px] bg-accent-500/12 font-mono text-[8px] text-accent-200">{index + 1}</span>
+                  <span className="mt-1 size-1.5 shrink-0 rounded-full" style={{ backgroundColor: item.label === 'text' ? '#f0b45a' : item.label === 'character' ? '#7fb6ff' : '#8bd1c7' }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9.5px] font-medium">{meta.name}</span>
+                      {item.visible === false ? <EyeOff className="size-2.5 text-[var(--color-text-tertiary)]" /> : null}
+                      {item.locked ? <Lock className="size-2.5 text-[var(--color-text-tertiary)]" /> : null}
+                    </div>
+                    <p className="mt-0.5 truncate text-[9px] text-[var(--color-text-tertiary)]">{item.caption || '未填写提示词'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); setItem(item.id, { visible: item.visible === false }) }}
+                    className="mt-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]"
+                    title={item.visible === false ? '显示图层' : '隐藏图层'}
+                  >
+                    {item.visible === false ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                  </button>
+                </div>
+                {isSelected ? (
+                  <div className="space-y-2 border-t border-accent-500/20 p-2" onClick={(event) => event.stopPropagation()}>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Select value={item.label} onChange={(event) => setItem(item.id, { label: event.target.value as LayoutLabel })} className="w-[76px]">
+                        <option value="object">物体</option><option value="character">人物</option><option value="text">文字</option>
+                      </Select>
+                      <button type="button" onClick={() => setItem(item.id, { locked: !item.locked })} title={item.locked ? '解锁' : '锁定'}>{item.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}</button>
+                      <span className="font-mono text-[8px] text-[var(--color-text-tertiary)]">{item.bbox.map((value) => Math.round(value)).join(',')}</span>
+                      <button type="button" onClick={() => removeItem(item.id)} className="ml-auto text-[var(--color-text-tertiary)] hover:text-red-400"><X className="size-3.5" /></button>
+                    </div>
+                    <Textarea value={item.caption} onChange={(event) => setItem(item.id, { caption: event.target.value })} placeholder="区域提示词" className="h-20 w-full resize-none" />
+                    {item.label === 'text' ? <Input value={item.text ?? ''} onChange={(event) => setItem(item.id, { text: event.target.value })} placeholder="图中文字" className="w-full border-amber-500/30" /> : null}
+                    <label className="flex items-center gap-2 text-[9px] text-[var(--color-text-tertiary)]">不透明度<input type="range" min={0.1} max={1} step={0.05} value={item.opacity ?? 1} onChange={(event) => setItem(item.id, { opacity: Number(event.target.value) })} className="flex-1 accent-[var(--color-accent)]" /></label>
+                  </div>
+                ) : null}
               </div>
-              <Textarea value={selected.caption} onChange={(event) => setItem(selected.id, { caption: event.target.value })} placeholder="区域提示词" className="h-20 w-full resize-none" />
-              {selected.label === 'text' ? <Input value={selected.text ?? ''} onChange={(event) => setItem(selected.id, { text: event.target.value })} placeholder="图中文字" className="w-full border-amber-500/30" /> : null}
-              <label className="flex items-center gap-2 text-[9px] text-[var(--color-text-tertiary)]">不透明度<input type="range" min={0.1} max={1} step={0.05} value={selected.opacity ?? 1} onChange={(event) => setItem(selected.id, { opacity: Number(event.target.value) })} className="flex-1 accent-[var(--color-accent)]" /></label>
-            </div>
-          ) : <div className="flex h-full items-center justify-center text-center text-[9.5px] text-[var(--color-text-tertiary)]">选中画布区域后在这里编辑图层</div>}
+            )
+          })}
+          {draft.items.length === 0 ? <div className="rounded border border-dashed border-[var(--color-border)] px-2 py-6 text-center text-[9.5px] text-[var(--color-text-tertiary)]">用“画新框”在画布上拖出第一个区域</div> : null}
         </div>
       </div>
     )
+
   }
 
   return (
-    <div className="flex h-[calc(100vh-96px)] min-h-[620px] flex-col gap-2 overflow-hidden pb-2">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden pb-1">
 
       <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] gap-2">
         <aside

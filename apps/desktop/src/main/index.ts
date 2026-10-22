@@ -1329,7 +1329,7 @@ exit 0
   if (screenshot) {
     const studio = createAppWindow('studio', false)
     await new Promise<void>((resolve) => studio.webContents.once('did-finish-load', () => resolve()))
-    await new Promise((resolve) => setTimeout(resolve, 2600))
+    await new Promise((resolve) => setTimeout(resolve, 6000))
     const studioShot = await studio.webContents.capturePage()
     writeFileSync(join(app.getPath('userData'), 'screenshot-studio.png'), studioShot.toPNG())
 

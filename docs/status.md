@@ -67,7 +67,7 @@ env -u ELECTRON_RUN_AS_NODE pnpm --filter @clover/desktop exec electron . --smok
 | Studio 后端 | 🟡 | utilityProcess HTTP/WS、token、RPC、静态 Web root；health/WS/Job/Studio API/static 已验；真实生成与手机验收未做 |
 | 创作生成 | 🟡 | 已通过 backend `/api/jobs` 提交 Supervisor；缺权重/运行时预检仍拦截 |
 | Project/图层 | 🟡 | `projects/<id>/project.json` + assets、自动保存、图层 visible/lock/opacity；未做完整 UI 验收 |
-| 双窗口 Studio v0.5 | 🟡 | Studio + Trainer；管理面为 Studio 覆盖层、终端抽屉、三列可停靠面板 |
+| 双窗口 Studio v0.5 | 🟡 | Studio + Trainer；底部全局页面 tabs、终端抽屉、三列可停靠面板、纵向图层列表 |
 | 五窗口 UI v0.5 | 🟡 | 新增设备管理器；工作台/Gradio 参数；真实 host/权重未验收 |
 | Kohaku Trainer 仓库 | ✅ | runtime clone、bare mirror、commit/worktree |
 | Trainer 环境管理 | 🟡 | 本机/远端 venv、lock hash、install、doctor 代码路径；fake uv 验证，真实 CUDA 未 |
