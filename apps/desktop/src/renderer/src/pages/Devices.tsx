@@ -3,6 +3,7 @@ import {
   Boxes,
   Cpu,
   GraduationCap,
+  FolderOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Ipc } from '@shared/channels'
-import type { ComputeDevice, ManagedHost } from '@shared/types'
+import type { ComputeDevice, ManagedHost, SshAuthMethod } from '@shared/types'
 import { call } from '../lib/api'
 import { dateTime } from '../lib/format'
 import { openWindow } from '../lib/windows'
@@ -26,7 +27,10 @@ interface HostForm {
   host: string
   user: string
   port: string
+  authMethod: SshAuthMethod
   identityFile: string
+  password: string
+  hasPassword: boolean
   trainerRoot: string
   instanceRoot: string
   modelsRoot: string
@@ -37,11 +41,20 @@ const EMPTY_FORM: HostForm = {
   host: '',
   user: '',
   port: '22',
+  authMethod: 'identityFile',
   identityFile: '',
+  password: '',
+  hasPassword: false,
   trainerRoot: '~/.mossstudio/trainer',
   instanceRoot: '~/.mossstudio/instances',
   modelsRoot: '~/.mossstudio/models',
 }
+
+const AUTH_METHODS: Array<{ value: SshAuthMethod; label: string }> = [
+  { value: 'identityFile', label: 'Identity file' },
+  { value: 'password', label: '密码' },
+  { value: 'none', label: '无验证' },
+]
 
 function statusTone(host: ManagedHost): 'accent' | 'red' | 'amber' | 'neutral' {
   if (host.status === 'ok') return 'accent'
@@ -139,7 +152,10 @@ export function DevicesPage(): React.JSX.Element {
       host: host.host ?? '',
       user: host.user ?? '',
       port: String(host.port ?? 22),
+      authMethod: host.authMethod ?? 'identityFile',
       identityFile: host.identityFile ?? '',
+      password: '',
+      hasPassword: host.hasPassword ?? false,
       trainerRoot: host.trainerRoot,
       instanceRoot: host.instanceRoot ?? '~/.mossstudio/instances',
       modelsRoot: host.modelsRoot ?? '~/.mossstudio/models',
@@ -152,6 +168,10 @@ export function DevicesPage(): React.JSX.Element {
       toast.push('host、user 和训练器根目录不能为空', 'error')
       return
     }
+    if (form.authMethod === 'password' && !form.password && !form.hasPassword) {
+      toast.push('请输入 SSH 密码', 'error')
+      return
+    }
     setSaving(true)
     try {
       const saved = await call<ManagedHost>(Ipc.hostsSave, {
@@ -160,7 +180,9 @@ export function DevicesPage(): React.JSX.Element {
         host: form.host.trim(),
         user: form.user.trim(),
         port: Number(form.port) || 22,
-        identityFile: form.identityFile.trim() || undefined,
+        authMethod: form.authMethod,
+        identityFile: form.authMethod === 'identityFile' ? form.identityFile.trim() || undefined : undefined,
+        password: form.authMethod === 'password' ? form.password || undefined : undefined,
         trainerRoot: form.trainerRoot.trim(),
         instanceRoot: form.instanceRoot.trim() || undefined,
         modelsRoot: form.modelsRoot.trim() || undefined,
@@ -171,6 +193,7 @@ export function DevicesPage(): React.JSX.Element {
       })
       setSelectedId(saved.id)
       setHostOpen(false)
+      setForm(EMPTY_FORM)
       toast.push('设备连接已保存，先测试连接', 'success')
       void testHost(saved)
     } catch (error) {
@@ -178,6 +201,20 @@ export function DevicesPage(): React.JSX.Element {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function pickIdentityFile(): Promise<void> {
+    try {
+      const path = await call<string | null>(Ipc.pickDialog, { kind: 'file', title: '选择 SSH Identity file' })
+      if (path) setForm((current) => ({ ...current, identityFile: path }))
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
+    }
+  }
+
+  function closeHostForm(): void {
+    setHostOpen(false)
+    setForm(EMPTY_FORM)
   }
 
   async function testHost(host: ManagedHost): Promise<void> {
@@ -446,13 +483,13 @@ export function DevicesPage(): React.JSX.Element {
 
       <Modal
         open={hostOpen}
-        onClose={() => setHostOpen(false)}
+        onClose={closeHostForm}
         title={form.id ? '编辑 SSH 设备' : '添加 SSH 设备'}
-        description="使用系统 OpenSSH + 密钥/agent，不保存密码。首次连接要求 host key 已在 known_hosts 中。"
+        description="支持 Identity file、密码或无验证登录，按设备记住选择。首次连接会提示确认并保存主机密钥指纹。"
         width="max-w-2xl"
         footer={
           <>
-            <Button tone="secondary" onClick={() => setHostOpen(false)}>
+            <Button tone="secondary" onClick={closeHostForm}>
               取消
             </Button>
             <Button tone="primary" onClick={() => void saveHost()} disabled={saving}>
@@ -499,14 +536,80 @@ export function DevicesPage(): React.JSX.Element {
                 placeholder="22"
               />
             </label>
-            <label className="block sm:col-span-2">
-              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">Identity file（可选）</span>
-              <Input
-                value={form.identityFile}
-                onChange={(event) => setForm({ ...form, identityFile: event.target.value })}
-                placeholder="~/.ssh/id_ed25519"
-              />
-            </label>
+            <div className="sm:col-span-2">
+              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">登录方式</span>
+              <div role="tablist" aria-label="SSH 登录方式" className="relative flex rounded-[5px] border border-[var(--color-border-subtle)] bg-white/[0.035] p-0.5">
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0.5 left-0.5 rounded-[3px] bg-white/[0.09] shadow-sm transition-transform duration-200"
+                  style={{ width: 'calc((100% - 4px) / 3)', transform: `translateX(${AUTH_METHODS.findIndex((method) => method.value === form.authMethod) * 100}%)` }}
+                />
+                {AUTH_METHODS.map((method, index) => (
+                  <button
+                    key={method.value}
+                    id={`ssh-auth-tab-${method.value}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={form.authMethod === method.value}
+                    aria-controls={`ssh-auth-panel-${method.value}`}
+                    tabIndex={form.authMethod === method.value ? 0 : -1}
+                    onClick={() => setForm((current) => ({ ...current, authMethod: method.value }))}
+                    onKeyDown={(event) => {
+                      const next = event.key === 'ArrowRight' ? (index + 1) % 3
+                        : event.key === 'ArrowLeft' ? (index + 2) % 3
+                          : event.key === 'Home' ? 0 : event.key === 'End' ? 2 : null
+                      if (next === null) return
+                      event.preventDefault()
+                      setForm((current) => ({ ...current, authMethod: AUTH_METHODS[next].value }))
+                      document.getElementById(`ssh-auth-tab-${AUTH_METHODS[next].value}`)?.focus()
+                    }}
+                    className={cn('relative flex-1 rounded-[3px] px-2.5 py-1.5 text-[10.5px] font-medium transition-colors', form.authMethod === method.value ? 'text-[var(--color-text)]' : 'text-[var(--color-text-secondary)]')}
+                  >
+                    {method.label}
+                  </button>
+                ))}
+              </div>
+              <div className="-mx-1 mt-1 overflow-hidden">
+                <div className="flex transition-transform duration-200" style={{ transform: `translateX(-${AUTH_METHODS.findIndex((method) => method.value === form.authMethod) * 100}%)` }}>
+                  {AUTH_METHODS.map((method) => (
+                    <div
+                      key={method.value}
+                      id={`ssh-auth-panel-${method.value}`}
+                      role="tabpanel"
+                      aria-labelledby={`ssh-auth-tab-${method.value}`}
+                      aria-hidden={form.authMethod !== method.value}
+                      inert={form.authMethod !== method.value}
+                      className="min-w-0 flex-[0_0_100%] space-y-1.5 p-1"
+                    >
+                      {method.value === 'identityFile' ? (
+                        <>
+                          <label className="block">
+                            <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">Identity file（可选）</span>
+                            <div className="flex gap-1.5">
+                              <Input value={form.identityFile} onChange={(event) => setForm({ ...form, identityFile: event.target.value })} placeholder="~/.ssh/id_ed25519" className="min-w-0 flex-1" />
+                              <Button tone="secondary" style={{ height: 30 }} onClick={() => void pickIdentityFile()}>
+                                <span className="inline-flex items-center gap-1.5"><FolderOpen className="size-3.5" />选择文件</span>
+                              </Button>
+                            </div>
+                          </label>
+                          <p className="text-[9.5px] text-[var(--color-text-tertiary)]">留空使用系统默认密钥或 SSH agent；加密私钥请先加入 agent。</p>
+                        </>
+                      ) : method.value === 'password' ? (
+                        <>
+                          <label className="block">
+                            <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">SSH 密码</span>
+                            <Input type="password" autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder={form.hasPassword ? '留空保留已保存的密码' : '输入 SSH 登录密码'} />
+                          </label>
+                          <p className="text-[9.5px] text-[var(--color-text-tertiary)]">密码通过本机系统安全存储加密保存。</p>
+                        </>
+                      ) : (
+                        <p className="py-3 text-[10.5px] leading-5 text-[var(--color-text-secondary)]">仅适用于服务端允许无认证的账户，不会尝试密钥或密码。</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
             <label className="block">
               <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">训练器根目录</span>
               <Input

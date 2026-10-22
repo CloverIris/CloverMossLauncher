@@ -1,7 +1,14 @@
 import { homedir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TrainingHost } from '@shared/types'
 import { run, runStream, type RunResult } from '../lib/run'
+import { paths } from '../lib/paths'
+import { getSshPassword } from './sshCredentials'
+import { hostKeyArgs } from './sshHostKeys'
+import { getSshTools, sshLocalPath } from './sshTools'
+
+let askpass: string | undefined
 
 export function posixQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
@@ -18,13 +25,68 @@ export function targetOf(host: TrainingHost): string {
   return `${host.user}@${host.host}`
 }
 
+function authArgs(host: TrainingHost): string[] {
+  const method = host.authMethod ?? 'identityFile'
+  if (method === 'password') {
+    return [
+      '-o', 'BatchMode=no',
+      '-o', 'PreferredAuthentications=password',
+      '-o', 'PasswordAuthentication=yes',
+      '-o', 'PubkeyAuthentication=no',
+      '-o', 'KbdInteractiveAuthentication=no',
+      '-o', 'NumberOfPasswordPrompts=1',
+    ]
+  }
+  if (method === 'none') {
+    return [
+      '-o', 'BatchMode=yes',
+      '-o', 'PreferredAuthentications=none',
+      '-o', 'PubkeyAuthentication=no',
+      '-o', 'PasswordAuthentication=no',
+      '-o', 'KbdInteractiveAuthentication=no',
+      '-o', 'GSSAPIAuthentication=no',
+      '-o', 'HostbasedAuthentication=no',
+    ]
+  }
+  const args = ['-o', 'BatchMode=yes', '-o', 'PreferredAuthentications=publickey']
+  if (host.identityFile) args.push('-o', 'IdentitiesOnly=yes', '-i', sshLocalPath(expandHome(host.identityFile)))
+  return args
+}
+
+/** Only the SSH child inherits the password; never put it in argv or helper files. */
+export function sshEnv(host: TrainingHost): NodeJS.ProcessEnv {
+  if (host.authMethod !== 'password') return {}
+  const password = getSshPassword(host.id)
+  if (!askpass) {
+    const directory = join(paths.cache(), 'ssh-askpass')
+    mkdirSync(directory, { recursive: true, mode: 0o700 })
+    const script = join(directory, 'askpass.cjs')
+    writeFileSync(script, "process.stdout.write(process.env.CLOVER_SSH_PASSWORD + '\\n')\n", { mode: 0o600 })
+    if (process.platform === 'win32' && !getSshTools().shell) {
+      // Win32 OpenSSH accepts an executable with arguments in SSH_ASKPASS.
+      askpass = `"${process.execPath}" "${script}"`
+    } else {
+      const launcher = join(directory, 'askpass.sh')
+      writeFileSync(launcher, '#!/bin/sh\nexec "$CLOVER_SSH_NODE" "$CLOVER_SSH_ASKPASS_SCRIPT"\n', { mode: 0o700 })
+      askpass = sshLocalPath(launcher)
+    }
+  }
+  return {
+    SSH_ASKPASS: askpass,
+    SSH_ASKPASS_REQUIRE: 'force',
+    DISPLAY: process.env['DISPLAY'] || ':0',
+    ELECTRON_RUN_AS_NODE: '1',
+    CLOVER_SSH_NODE: sshLocalPath(process.execPath),
+    CLOVER_SSH_ASKPASS_SCRIPT: join(paths.cache(), 'ssh-askpass', 'askpass.cjs').replace(/\\/g, '/'),
+    CLOVER_SSH_PASSWORD: password,
+  }
+}
+
 function commonArgs(host: TrainingHost): string[] {
   if (host.kind !== 'ssh' || !host.host || !host.user) throw new Error('不是有效的 SSH 主机')
   const args = [
-    '-o',
-    'BatchMode=yes',
-    '-o',
-    'StrictHostKeyChecking=yes',
+    ...authArgs(host),
+    ...hostKeyArgs(),
     '-o',
     'ConnectTimeout=12',
     '-o',
@@ -33,7 +95,6 @@ function commonArgs(host: TrainingHost): string[] {
     'ServerAliveCountMax=3',
   ]
   if (host.port) args.push('-p', String(host.port))
-  if (host.identityFile) args.push('-i', expandHome(host.identityFile))
   return args
 }
 
@@ -53,28 +114,28 @@ export function sshTunnelArgs(host: TrainingHost, localPort: number, remotePort:
 }
 
 export function sshCommand(): string {
-  return process.env['CLOVER_SSH_BIN'] || 'ssh'
+  return getSshTools().ssh
 }
 
 export function scpCommand(): string {
-  return process.env['CLOVER_SCP_BIN'] || 'scp'
+  return getSshTools().scp
 }
 
 export function scpArgs(host: TrainingHost, remotePath: string, localPath: string): string[] {
   if (host.kind !== 'ssh' || !host.host || !host.user) throw new Error('不是有效的 SSH 训练主机')
   const args = [
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=yes',
+    '-S', sshCommand(),
+    ...authArgs(host),
+    ...hostKeyArgs(),
     '-o', 'ConnectTimeout=12',
   ]
   if (host.port) args.push('-P', String(host.port))
-  if (host.identityFile) args.push('-i', expandHome(host.identityFile))
-  args.push(`${targetOf(host)}:${remotePath}`, localPath)
+  args.push(`${targetOf(host)}:${remotePath}`, sshLocalPath(localPath))
   return args
 }
 
 export async function scpFrom(host: TrainingHost, remotePath: string, localPath: string, timeoutMs = 180_000): Promise<RunResult> {
-  return run(scpCommand(), scpArgs(host, remotePath, localPath), { timeoutMs })
+  return run(scpCommand(), scpArgs(host, remotePath, localPath), { timeoutMs, env: sshEnv(host) })
 }
 
 export async function remoteAbsolute(host: TrainingHost, path: string): Promise<string> {
@@ -85,7 +146,7 @@ export async function remoteAbsolute(host: TrainingHost, path: string): Promise<
 }
 
 export async function sshExec(host: TrainingHost, command: string, timeoutMs = 60_000): Promise<RunResult> {
-  return run(sshCommand(), sshArgs(host, command), { timeoutMs })
+  return run(sshCommand(), sshArgs(host, command), { timeoutMs, env: sshEnv(host) })
 }
 
 export async function sshStream(
@@ -94,7 +155,7 @@ export async function sshStream(
   timeoutMs: number,
   onLine: (line: string, stream: 'stdout' | 'stderr') => void,
 ): Promise<RunResult> {
-  return runStream(sshCommand(), sshArgs(host, command), { timeoutMs }, onLine)
+  return runStream(sshCommand(), sshArgs(host, command), { timeoutMs, env: sshEnv(host) }, onLine)
 }
 
 export async function remotePathExists(host: TrainingHost, path: string, timeoutMs = 15_000): Promise<boolean> {

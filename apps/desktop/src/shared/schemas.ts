@@ -12,7 +12,9 @@ const hostSaveSchema = z.object({
   host: z.string().min(1).max(255),
   user: z.string().min(1).max(120),
   port: z.number().int().min(1).max(65535).optional(),
+  authMethod: z.enum(['identityFile', 'password', 'none']).optional(),
   identityFile: z.string().max(4096).optional(),
+  password: z.string().max(1024).regex(/^[^\r\n\0]*$/, '密码不能包含换行或 NUL').optional(),
   trainerRoot: z.string().min(1).max(4096),
   instanceRoot: z.string().max(4096).optional(),
   modelsRoot: z.string().max(4096).optional(),
@@ -330,7 +332,7 @@ export const schemas = {
   galleryReveal: z.object({ path: pathLike }),
 
   pickDialog: z.object({
-    kind: z.enum(['folder', 'image']).default('folder'),
+    kind: z.enum(['folder', 'image', 'file']).default('folder'),
     title: z.string().max(120).optional(),
   }),
 

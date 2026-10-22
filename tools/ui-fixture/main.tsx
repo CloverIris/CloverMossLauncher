@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { Ipc } from '../../apps/desktop/src/shared/channels'
 import { schemas } from '../../apps/desktop/src/shared/schemas'
-import type { InstanceInfo, Settings } from '../../apps/desktop/src/shared/types'
+import type { InstanceInfo, ManagedHost, Settings } from '../../apps/desktop/src/shared/types'
 import { Field, Input, Modal, Select, Sheet, Spinner, Switch, Textarea, ToastProvider, useToast } from '../../apps/desktop/src/renderer/src/components/ui'
 import { SettingsPage } from '../../apps/desktop/src/renderer/src/pages/Settings'
 import { HomePage } from '../../apps/desktop/src/renderer/src/pages/Home'
@@ -12,6 +12,9 @@ import { StudioPage } from '../../apps/desktop/src/renderer/src/pages/Studio'
 import { useApp } from '../../apps/desktop/src/renderer/src/store'
 import { Collapse, MotionPanel, Presence, useUiAnimationEnabled } from '../../apps/desktop/src/renderer/src/components/motion'
 import { NotificationPanel } from '../../apps/desktop/src/renderer/src/components/NotificationPanel'
+import { DevicesPage } from '../../apps/desktop/src/renderer/src/pages/Devices'
+
+let fixtureHosts: ManagedHost[] = []
 
 let savedSettings: Settings = {
   theme: 'system', uiAnimation: 'system', language: 'zh-CN', networkMode: 'auto', gitMirror: null,
@@ -24,6 +27,20 @@ window.clover = {
   platform: 'win32', version: '0.1.0', acrylic: false, windowKind: 'launcher', channel: 'dev',
   on: () => () => undefined,
   async invoke<T>(channel: string, payload?: unknown): Promise<T> {
+    if (channel === Ipc.hostsList) return { ok: true, data: fixtureHosts } as T
+    if (channel === Ipc.hostsSave) {
+      const input = schemas.hostSave.parse(payload)
+      document.getElementById('host-request')!.textContent = JSON.stringify(input)
+      const { password, ...config } = input
+      const host = { ...config, id: input.id ?? 'fixture-ssh', kind: 'ssh', status: 'unchecked', devices: [], hasPassword: input.authMethod === 'password' } as ManagedHost
+      fixtureHosts = [...fixtureHosts.filter((item) => item.id !== host.id), host]
+      return { ok: true, data: host } as T
+    }
+    if (channel === Ipc.hostsTest) return { ok: true, data: { ...fixtureHosts[0], status: 'ok' } } as T
+    if (channel === Ipc.pickDialog) {
+      document.getElementById('pick-request')!.textContent = JSON.stringify(schemas.pickDialog.parse(payload))
+      return { ok: true, data: 'C:\\Users\\fixture\\.ssh\\key with spaces' } as T
+    }
     if (channel === Ipc.settingsUpdate) savedSettings = { ...savedSettings, ...payload as Partial<Settings> }
     if (channel === Ipc.backendInfo) return { ok: true, data: { ready: true, url: 'http://studio-fixture', token: 'fixture' } } as T
     if (channel === Ipc.windowOpen) document.getElementById('window-request')!.textContent = JSON.stringify(schemas.windowOpen.parse(payload))
@@ -65,6 +82,7 @@ function Fixture(): React.JSX.Element {
         <button id="view-controls" onClick={() => setView('controls')}>Controls</button>
         <button id="view-settings" onClick={() => setView('settings')}>Settings</button>
         <button id="view-home" onClick={() => setView('home')}>Home</button>
+        <button id="view-devices" onClick={() => setView('devices')}>Devices</button>
         <button id="view-studio" onClick={() => {
           useApp.setState({ studioPrompt: 'Fixture prompt', instances: [] })
           setView('studio')
@@ -77,11 +95,13 @@ function Fixture(): React.JSX.Element {
         <button id="toggle-sidebar" onClick={() => void useApp.getState().toggleSidebar()}>Sidebar</button>
       </nav>
       <output id="studio-job" hidden />
+      <output id="host-request" hidden />
+      <output id="pick-request" hidden />
       <output id="window-request" hidden />
       <output id="saved-settings" hidden>{JSON.stringify(settings)}</output>
       <output id="motion-enabled" hidden>{animate ? 'on' : 'off'}</output>
       <MotionPanel transitionKey={view} data-testid="page-motion">
-        {view === 'settings' ? <SettingsPage /> : view === 'home' ? <HomePage /> : view === 'studio' ? <ToastProvider><StudioPage /></ToastProvider> : (
+        {view === 'settings' ? <SettingsPage /> : view === 'home' ? <HomePage /> : view === 'devices' ? <ToastProvider><DevicesPage /></ToastProvider> : view === 'studio' ? <ToastProvider><StudioPage /></ToastProvider> : (
           <div style={{ transform: 'translateX(20px)', backdropFilter: 'blur(2px)', width: 400, overflow: 'hidden' }}>
             <input id="typography" className="text-[10.5px] font-mono leading-5" />
             <button id="button-typography" className="text-[11px] font-medium">Typography</button>

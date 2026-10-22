@@ -51,7 +51,7 @@ interface RunningJob {
   killTimer?: NodeJS.Timeout
   lastLines: string[]
   cancelRequested: boolean
-  cancelCommand?: { command: string; args: string[] }
+  cancelCommand?: { command: string; args: string[]; env?: NodeJS.ProcessEnv }
 }
 
 const jobs = new Map<string, JobRecord>()
@@ -669,7 +669,7 @@ export interface StartTrainingJobInput {
   args: string[]
   env?: NodeJS.ProcessEnv
   totalSteps?: number
-  cancelCommand?: { command: string; args: string[] }
+  cancelCommand?: { command: string; args: string[]; env?: NodeJS.ProcessEnv }
 }
 
 function trainerMetrics(line: string): { step?: number; loss?: number; gradNorm?: number; lr?: number } | null {
@@ -803,6 +803,7 @@ export async function cancelJob(id: string): Promise<JobRecord | null> {
   if (runningJob.cancelCommand) {
     try {
       spawn(runningJob.cancelCommand.command, runningJob.cancelCommand.args, {
+        env: { ...process.env, ...runningJob.cancelCommand.env },
         windowsHide: true,
         stdio: 'ignore',
         detached: process.platform !== 'win32',
