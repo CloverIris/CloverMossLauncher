@@ -1202,7 +1202,7 @@ exit 0
       host: '192.0.2.10',
       user: 'trainer',
       port: 22,
-      trainerRoot: '~/MossStudioTrainer',
+      trainerRoot: '~/.mossstudio/trainer',
     })
     const before = listTrainingHosts(getSettings())
     removeTrainingHost(host.id)
