@@ -19,7 +19,7 @@ const TARGETS: ProbeTarget[] = [
     label: 'ghproxy 镜像',
     url: 'https://ghproxy.net/https://github.com',
     category: 'git',
-    value: 'https://ghproxy.net/https://github.com/',
+    value: 'https://ghproxy.net/',
   },
   {
     id: 'kkgithub',
@@ -150,7 +150,10 @@ export function getLastNetwork(): NetworkReport | null {
 
 export function applyGitMirror(url: string, mirror: string | null): string {
   if (!mirror) return url
-  if (mirror.includes('ghproxy') || mirror.includes('gh-proxy')) return `${mirror}${url}`
+  if (mirror.includes('ghproxy') || mirror.includes('gh-proxy')) {
+    const prefix = mirror.replace(/https?:\/\/github\.com\/?$/, '')
+    return `${prefix.replace(/\/$/, '')}/${url}`
+  }
   if (mirror.includes('kkgithub')) return url.replace('https://github.com', mirror.replace(/\/$/, ''))
   return `${mirror.replace(/\/$/, '')}/${url.replace(/^https?:\/\//, '')}`
 }

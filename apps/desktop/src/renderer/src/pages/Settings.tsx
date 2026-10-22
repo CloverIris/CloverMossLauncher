@@ -239,7 +239,7 @@ export function SettingsPage(): React.JSX.Element {
             </div>
             {(
               [
-                ['gitMirror', 'git 镜像前缀', 'https://ghproxy.net/https://github.com/'],
+                ['gitMirror', 'git 镜像前缀', 'https://ghproxy.net/'],
                 ['pipIndex', 'pip index', 'https://pypi.tuna.tsinghua.edu.cn/simple'],
                 ['hfEndpoint', 'HF endpoint', 'https://hf-mirror.com'],
               ] as Array<[keyof Settings, string, string]>
