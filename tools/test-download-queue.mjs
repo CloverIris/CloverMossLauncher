@@ -46,6 +46,7 @@ test('live download updates preserve initial queue order and refresh task data',
   let responseTask
   const { useApp } = loadSource('../apps/desktop/src/renderer/src/store.ts', {
     '@shared/channels': channels,
+    '../../../../../release/models.json': { schema_version: 2, models: [], adapters: [] },
     './lib/api': {
       onEvent: (channel, callback) => listeners.set(channel, callback),
       call: async (channel) => {
@@ -88,10 +89,29 @@ test('service snapshots keep insertion order across errors, pause and retry', as
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('offline fixture') })
   const service = loadSource('../apps/desktop/src/main/services/models.ts', {
     '@shared/channels': channels,
+    '../../../../../release/models.json': { schema_version: 2, models: [], adapters: [] },
     '../lib/events': { emit: () => {} },
     '../lib/paths': { paths: {} },
     './network': { getLastNetwork: () => null },
     './updates': { localReleaseDir: () => null },
+    './instances': { listInstances: async () => [] },
+    './supervisor': { listJobs: async () => [] },
+    './modelImports': {
+      importModelFolder: async () => ({ added: 0, duplicates: 0 }),
+      readImportedModels: async () => [],
+      removeImportedModel: () => {},
+      verifyImportedModelFile: async () => true,
+    },
+    './modelFiles': {
+      downloadFile: async () => {},
+      fileSize: async () => 0,
+      hashFile: async () => '0'.repeat(64),
+      materialize: async () => {},
+      resolveFiles: async () => ({ sha: '1'.repeat(40), files: [] }),
+      safePath: (root, file) => `${root}/${file}`,
+      selectFiles: (files) => files,
+      validateSnapshot: async () => true,
+    },
   })
   const settings = { hfEndpoint: 'http://fixture.invalid' }
   const expected = []

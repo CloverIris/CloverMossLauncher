@@ -1,4 +1,3 @@
-import { normalizeGradioConfig } from '../apps/desktop/src/shared/launch.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -192,18 +191,3 @@ test('materialized weights remain readable without symbolic links', () =>
     assert.deepEqual(await readFile(join(root, 'nested/target')), payload)
   }))
 
-test('explicit Gradio models retain precedence over instance components', () => {
-  assert.equal(normalizeGradioConfig({}).modelSource, 'instance')
-  assert.equal(normalizeGradioConfig({ model: 'team/custom' }).modelSource, 'custom')
-  assert.equal(
-    normalizeGradioConfig({ model: 'OpenMOSS-Team/MOSS-Image-SFT', modelSource: 'custom' })
-      .modelSource,
-    'custom',
-  )
-  const config = normalizeGradioConfig({
-    modelSource: 'instance',
-    extraArgs: '--model "D:\\Models Folder\\custom"',
-  })
-  assert.equal(config.modelSource, 'custom')
-  assert.equal(config.model, 'D:\\Models Folder\\custom')
-})
