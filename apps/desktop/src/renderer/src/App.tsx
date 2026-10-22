@@ -9,7 +9,6 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './components/ui'
 import { NotificationPanel } from './components/NotificationPanel'
 import { UpdateDialog } from './components/UpdateDialog'
-import { AgentSidebar } from './components/AgentSidebar'
 import { GalleryPage } from './pages/Gallery'
 import { DiagnosticsPage } from './pages/Diagnostics'
 import { DevicesPage } from './pages/Devices'
@@ -119,36 +118,6 @@ function ManagementCenter(): React.JSX.Element {
   )
 }
 
-function AgentDock(): React.JSX.Element {
-  const [pos, setPos] = useState(() => ({
-    x: Math.max(12, window.innerWidth - 336),
-    y: Math.max(60, window.innerHeight - 332),
-  }))
-  const drag = useRef<{ dx: number; dy: number } | null>(null)
-  return (
-    <div className="fixed z-30 flex h-[300px] w-[320px] flex-col overflow-hidden rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/95 shadow-2xl" style={{ left: pos.x, top: pos.y }}>
-      <div
-        className="flex h-4 shrink-0 cursor-move items-center justify-center border-b border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]"
-        onPointerDown={(event) => {
-          drag.current = { dx: event.clientX - pos.x, dy: event.clientY - pos.y }
-          event.currentTarget.setPointerCapture(event.pointerId)
-        }}
-        onPointerMove={(event) => {
-          if (!drag.current) return
-          setPos({
-            x: Math.min(window.innerWidth - 332, Math.max(8, event.clientX - drag.current.dx)),
-            y: Math.min(window.innerHeight - 312, Math.max(52, event.clientY - drag.current.dy)),
-          })
-        }}
-        onPointerUp={() => { drag.current = null }}
-      >
-        <GripVertical className="size-3" />
-      </div>
-      <div className="min-h-0 flex-1"><AgentSidebar /></div>
-    </div>
-  )
-}
-
 function StudioShell(): React.JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
@@ -223,7 +192,6 @@ function StudioShell(): React.JSX.Element {
               </ErrorBoundary>
             </MotionPanel>
           </main>
-          <AgentDock />
         </div>
       )}
       {terminalOpen ? (

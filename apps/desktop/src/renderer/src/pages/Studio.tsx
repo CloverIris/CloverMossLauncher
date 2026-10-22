@@ -4,7 +4,10 @@ import {
   GripVertical,
   Hand,
   Images,
+  Maximize2,
+  Minus,
   Plus,
+  RotateCcw,
   Copy,
   Eraser,
   ImagePlus,
@@ -43,6 +46,7 @@ import { useApp } from '../store'
 import { Button, Card, IconButton, Input, Modal, Pill, Segmented, Select, Textarea, cn, useToast } from '../components/ui'
 import { PromptSegmentsModal } from '../components/PromptSegmentsModal'
 import { GbcImportModal } from '../components/GbcImportModal'
+import { AgentSidebar } from '../components/AgentSidebar'
 import type { GbcRunResult } from '@shared/gbc'
 
 const SIZE_PRESETS: Array<[string, number, number]> = [
@@ -59,12 +63,21 @@ const LABEL_META: Record<LayoutLabel, { name: string; color: string; icon: React
   text: { name: '文字', color: 'amber', icon: <Type className="size-3" /> },
 }
 
-type PanelId = 'prompt' | 'sampler' | 'summary' | 'layers' | 'gallery'
+type PanelId = 'prompt' | 'sampler' | 'summary' | 'layers' | 'gallery' | 'agent'
 type DockId = 'left' | 'right' | 'float'
+const PANEL_TITLES: Record<PanelId, string> = {
+  prompt: '提示词',
+  sampler: '生成参数',
+  gallery: '图库',
+  summary: '布局总览',
+  layers: '图层',
+  agent: 'Agent',
+}
+
 const DEFAULT_DOCKS: Record<DockId, PanelId[]> = {
   left: ['prompt', 'sampler', 'gallery'],
   right: ['layers', 'summary'],
-  float: [],
+  float: ['agent'],
 }
 
 function DockPanel({
@@ -73,16 +86,21 @@ function DockPanel({
   dock,
   onDock,
   children,
+  className,
+  style,
 }: {
   id: PanelId
   title: string
   dock: DockId
   onDock: (id: PanelId, dock: DockId) => void
   children: React.ReactNode
+  className?: string
+  style?: React.CSSProperties
 }): React.JSX.Element {
   return (
     <section
-      className="flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/85 shadow-sm backdrop-blur-sm"
+      style={style}
+      className={cn('flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/85 shadow-sm backdrop-blur-sm', className)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault()
@@ -130,6 +148,20 @@ function MiniGallery(): React.JSX.Element {
       </div>
     </div>
   )
+}
+
+interface DraftTabSnapshot {
+  name: string
+  draft: LayoutDraft
+  prompt: string
+  negative: string
+  seed: number
+  steps: number
+  cfg: number
+  instanceId: string
+  seriesId: string
+  page: number
+  background: GalleryItem | null
 }
 
 type DragState =
@@ -211,10 +243,12 @@ export function StudioPage(): React.JSX.Element {
   const [gbcOpen, setGbcOpen] = useState(false)
   const [docks, setDocks] = useState(DEFAULT_DOCKS)
   const [tabOrder, setTabOrder] = useState<string[]>([])
+  const [draftTab, setDraftTab] = useState<DraftTabSnapshot | null>(null)
   const [dragTab, setDragTab] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const [steps, setSteps] = useState(env?.recommendation.steps ?? 8)
   const [cfg, setCfg] = useState(env?.recommendation.profile === 'dmd8' ? 1 : 3)
   const [seed, setSeed] = useState(42)
@@ -450,6 +484,7 @@ export function StudioPage(): React.JSX.Element {
         page,
       })
       setProjectId(saved.id)
+      setDraftTab(null)
       setProjectName(saved.name)
       lastSaved.current = projectSnapshot({
         name: saved.name, draft, prompt, negative, seed, steps, cfg, instanceId,
@@ -464,7 +499,47 @@ export function StudioPage(): React.JSX.Element {
     }
   }
 
+  function captureDraftTab(): void {
+    if (projectId) return
+    setDraftTab({
+      name: projectName.trim() || '未命名画布',
+      draft,
+      prompt,
+      negative,
+      seed,
+      steps,
+      cfg,
+      instanceId,
+      seriesId,
+      page,
+      background,
+    })
+  }
+
+  function restoreDraftTab(): void {
+    if (!draftTab) return
+    skipAutosave.current = true
+    setProjectId(null)
+    setProjectName(draftTab.name)
+    setSeriesId(draftTab.seriesId)
+    setPage(draftTab.page)
+    setPrompt(draftTab.prompt)
+    setStudioPrompt(draftTab.prompt)
+    setNegative(draftTab.negative)
+    setDraft(draftTab.draft)
+    setStudioDraft(draftTab.draft)
+    setSeed(draftTab.seed)
+    setSteps(draftTab.steps)
+    setCfg(draftTab.cfg)
+    setInstanceId(draftTab.instanceId)
+    setStudioBackground(draftTab.background)
+    setSelectedId(null)
+    lastSaved.current = ''
+    setTimeout(() => { skipAutosave.current = false }, 300)
+  }
+
   async function openProject(id: string): Promise<void> {
+    captureDraftTab()
     try {
       const project = await electronStudioClient.getProject(id)
       if (!project) return
@@ -502,6 +577,7 @@ export function StudioPage(): React.JSX.Element {
   }
 
   function newProject(): void {
+    setDraftTab(null)
     setProjectId(null)
     setProjectName('未命名 Project')
     setSeriesId('')
@@ -640,6 +716,22 @@ export function StudioPage(): React.JSX.Element {
       return next
     })
   }
+  function zoomAt(clientX: number, clientY: number, factor: number): void {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const nextZoom = Math.min(2.5, Math.max(0.3, zoom * factor))
+    if (nextZoom === zoom) return
+    const dx = clientX - rect.left - rect.width / 2
+    const dy = clientY - rect.top - rect.height / 2
+    const ratio = nextZoom / zoom
+    setPan({ x: dx - (dx - pan.x) * ratio, y: dy - (dy - pan.y) * ratio })
+    setZoom(nextZoom)
+  }
+  function resetView(): void {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
   function pickUpPan(event: React.PointerEvent<HTMLDivElement>): void {
     if (tool !== 'pan') return
     panRef.current = { x: event.clientX, y: event.clientY, ox: pan.x, oy: pan.y }
@@ -692,6 +784,7 @@ export function StudioPage(): React.JSX.Element {
       </div>
     )
     if (id === 'gallery') return <MiniGallery />
+    if (id === 'agent') return <AgentSidebar embedded />
     return (
       <div className="flex h-full flex-col">
         <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)] p-1.5">
@@ -720,8 +813,37 @@ export function StudioPage(): React.JSX.Element {
 
   return (
     <div className="flex h-[calc(100vh-96px)] min-h-[620px] flex-col gap-2 overflow-hidden pb-2">
+
+      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] gap-2">
+        <aside
+          className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto pr-0.5"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'left') }}
+        >
+          {docks.left.map((id) => (
+            <DockPanel key={id} id={id} dock="left" onDock={movePanel} className={id === 'gallery' ? 'h-[150px]' : ''} style={id === 'gallery' ? { flex: 'none' } : { flex: '1 1 0%' }} title={PANEL_TITLES[id]}>
+              {renderPanel(id)}
+            </DockPanel>
+          ))}
+          {docks.left.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
+        </aside>
+
+        <section className="relative flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60">
       <div className="flex shrink-0 items-center gap-2 rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/80 px-2 py-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {draftTab ? (
+            <button
+              type="button"
+              onClick={restoreDraftTab}
+              className={cn(
+                'flex h-7 max-w-[210px] shrink-0 items-center gap-1.5 rounded-t-[5px] border-b-2 px-2.5 text-[10.5px] transition',
+                !projectId ? 'border-accent-400 bg-white/[0.07] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-secondary)] hover:bg-white/[0.04]',
+              )}
+            >
+              <span className="truncate">{draftTab.name}</span>
+              <span className="shrink-0 text-[8px] text-amber-300">未保存</span>
+            </button>
+          ) : null}
           {orderedProjects.map((item) => {
             const current = item.id === projectId
             const status = current && projectSaving ? '保存中' : current ? '已保存' : '已保存'
@@ -754,7 +876,7 @@ export function StudioPage(): React.JSX.Element {
               </button>
             )
           })}
-          {!projectId ? (
+          {!projectId && !draftTab ? (
             <div className="flex h-7 shrink-0 items-center gap-1.5 rounded-t-[5px] border-b-2 border-accent-400 bg-white/[0.07] px-2.5 text-[10.5px]">
               <span className="max-w-[180px] truncate">{projectName.trim() || '未命名画布'}</span>
               <span className="text-[8px] text-amber-300">未保存</span>
@@ -765,22 +887,6 @@ export function StudioPage(): React.JSX.Element {
         <Button tone="secondary" onClick={newProject}><Plus className="size-3.5" /> 新建画布</Button>
         {env ? <Pill tone="blue">{env.recommendation.width}² · {env.recommendation.steps} 步</Pill> : null}
       </div>
-
-      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_300px] gap-2">
-        <aside
-          className="flex min-h-0 flex-col gap-2 overflow-y-auto pr-0.5"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'left') }}
-        >
-          {docks.left.map((id) => (
-            <DockPanel key={id} id={id} dock="left" onDock={movePanel} title={{ prompt: '提示词', sampler: '生成参数', gallery: '图库', summary: '布局总览', layers: '图层' }[id]}>
-              {renderPanel(id)}
-            </DockPanel>
-          ))}
-          {docks.left.length === 0 ? <div className="rounded border border-dashed p-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">把面板拖到这里</div> : null}
-        </aside>
-
-        <section className="relative flex min-h-0 flex-col overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)]/60">
           <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-2 py-1.5">
             <Segmented label="画布工具" value={tool} onChange={(value) => setTool(value as 'select' | 'draw' | 'pan')} options={[{ value: 'select', label: '选择' }, { value: 'draw', label: '画框' }, { value: 'pan', label: '手型' }]} />
             <Segmented value={label} onChange={(value) => setLabel(value as LayoutLabel)} options={[{ value: 'object', label: '物体' }, { value: 'character', label: '人物' }, { value: 'text', label: '文字' }]} />
@@ -788,6 +894,12 @@ export function StudioPage(): React.JSX.Element {
             <IconButton label="示例布局" onClick={() => { setDraft(exampleDraft()); setSelectedId(null) }}><Sparkles className="size-3.5" /></IconButton>
             <IconButton label="清空画布" onClick={() => { setDraft(createDraft(draft.width, draft.height)); setSelectedId(null) }}><Eraser className="size-3.5" /></IconButton>
             {background ? <IconButton label="清除底图" onClick={() => setStudioBackground(null)}><X className="size-3.5" /></IconButton> : null}
+            <div className="ml-1 flex items-center gap-0.5 border-l border-[var(--color-border-subtle)] pl-1">
+              <IconButton label="缩小画布" onClick={() => { const rect = viewportRef.current?.getBoundingClientRect(); if (rect) zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 0.8) }}><Minus className="size-3.5" /></IconButton>
+              <button type="button" onClick={resetView} className="w-11 text-center font-mono text-[9.5px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]" title="重置为 100%">{Math.round(zoom * 100)}%</button>
+              <IconButton label="放大画布" onClick={() => { const rect = viewportRef.current?.getBoundingClientRect(); if (rect) zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25) }}><Plus className="size-3.5" /></IconButton>
+              <IconButton label="恢复画布视图" onClick={resetView}><RotateCcw className="size-3.5" /></IconButton>
+            </div>
             <div className="ml-auto flex items-center gap-1.5">
               <Pill tone={backend?.ready ? 'accent' : 'amber'}>{backend?.ready ? '后端就绪' : '后端启动中'}</Pill>
               <Button tone="primary" onClick={() => void generate()}><span className="inline-flex items-center gap-1.5">开始生成 <ArrowRight className="size-3.5" /></span></Button>
@@ -795,8 +907,9 @@ export function StudioPage(): React.JSX.Element {
           </div>
 
           <div
+            ref={viewportRef}
             className="relative min-h-0 flex-1 overflow-hidden bg-[#121419]"
-            onWheel={(event) => { event.preventDefault(); setZoom((value) => Math.min(2.5, Math.max(0.3, value - event.deltaY * 0.001))) }}
+            onWheel={(event) => { event.preventDefault(); zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * 0.0012)) }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'float') }}
           >
@@ -903,7 +1016,7 @@ export function StudioPage(): React.JSX.Element {
             {docks.float.length > 0 ? (
               <div className="absolute right-2 top-2 z-20 flex max-h-[82%] w-[290px] flex-col gap-2 overflow-y-auto">
                 {docks.float.map((id) => (
-                  <DockPanel key={id} id={id} dock="float" onDock={movePanel} title={{ prompt: '提示词', sampler: '生成参数', gallery: '图库', summary: '布局总览', layers: '图层' }[id]}>
+                  <DockPanel key={id} id={id} dock="float" onDock={movePanel} style={id === 'agent' ? { height: 320, flex: 'none' } : undefined} title={PANEL_TITLES[id]}>
                     {renderPanel(id)}
                   </DockPanel>
                 ))}
@@ -913,12 +1026,12 @@ export function StudioPage(): React.JSX.Element {
         </section>
 
         <aside
-          className="flex min-h-0 flex-col gap-2 overflow-y-auto pl-0.5"
+          className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto pl-0.5"
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'right') }}
         >
           {docks.right.map((id) => (
-            <DockPanel key={id} id={id} dock="right" onDock={movePanel} title={{ prompt: '提示词', sampler: '生成参数', gallery: '图库', summary: '布局总览', layers: '图层' }[id]}>
+            <DockPanel key={id} id={id} dock="right" onDock={movePanel} style={{ flex: '1 1 0%' }} title={PANEL_TITLES[id]}>
               {renderPanel(id)}
             </DockPanel>
           ))}
