@@ -69,7 +69,6 @@ interface AppStore {
   error: string | null
   init: () => Promise<void>
   refreshEnv: () => Promise<void>
-  refreshInstances: () => Promise<void>
   refreshCatalog: () => Promise<void>
   refreshUpdates: () => Promise<void>
   checkForUpdates: () => Promise<UpdateState | null>
@@ -101,7 +100,6 @@ interface AppStore {
   dismissDiagnostic: (id: string) => Promise<void>
   clearDiagnostics: () => Promise<void>
   refreshDevices: () => Promise<void>
-  refreshCases: () => Promise<void>
   refreshOnboarding: () => Promise<void>
   startLaunch: (input: LaunchStartInput) => Promise<LaunchRow>
   stopLaunch: (rowId: string) => Promise<void>
@@ -159,9 +157,6 @@ export const useApp = create<AppStore>((set, get) => {
           message: task.error ?? task.label,
         })
       }
-    })
-    onEvent<{ id: string }>(Events.instancesChanged, () => {
-      void get().refreshInstances()
     })
     onEvent<JobRecord>(Events.job, (job) => {
       const previous = get().jobs.find((item) => item.id === job.id)
@@ -308,30 +303,26 @@ export const useApp = create<AppStore>((set, get) => {
         set({ settings })
         subscribe()
 
-        const [env, updates, instances, catalog, downloads, jobs, diagnostics, devices, cases, onboarding, queuedRows] =
+        const [env, updates, catalog, downloads, jobs, diagnostics, devices, onboarding, queuedRows] =
           await Promise.allSettled([
             call<EnvReport>(Ipc.envScan),
             call<UpdateState>(Ipc.updatesCheck),
-            call<InstanceInfo[]>(Ipc.instancesList),
             call<Catalog>(Ipc.modelsCatalog),
             call<DownloadTask[]>(Ipc.downloadsList),
             call<JobRecord[]>(Ipc.jobList),
             call<Diagnostic[]>(Ipc.diagnosticsList),
             call<LaunchDevice[]>(Ipc.devicesList),
-            call<LaunchCase[]>(Ipc.casesList),
             call<OnboardingStatus>(Ipc.onboardingStatus),
             call<LaunchRow[]>(Ipc.launchQueueList),
           ])
         set({
           env: env.status === 'fulfilled' ? env.value : null,
           updates: updates.status === 'fulfilled' ? updates.value : null,
-          instances: instances.status === 'fulfilled' ? instances.value : [],
           catalog: catalog.status === 'fulfilled' ? catalog.value : null,
           downloads: downloads.status === 'fulfilled' ? downloads.value : [],
           jobs: jobs.status === 'fulfilled' ? jobs.value : [],
           diagnostics: diagnostics.status === 'fulfilled' ? diagnostics.value : [],
           devices: devices.status === 'fulfilled' ? devices.value : [],
-          cases: cases.status === 'fulfilled' ? cases.value : [],
           onboarding: onboarding.status === 'fulfilled' ? onboarding.value : null,
           launchRows: queuedRows.status === 'fulfilled' ? queuedRows.value : [],
           activeJobId:
@@ -375,15 +366,6 @@ export const useApp = create<AppStore>((set, get) => {
         set({ error: error instanceof Error ? error.message : String(error) })
       } finally {
         set({ scanning: false, scanSection: null })
-      }
-    },
-
-    async refreshInstances() {
-      try {
-        const instances = await call<InstanceInfo[]>(Ipc.instancesList)
-        set({ instances })
-      } catch {
-        // keep previous list
       }
     },
 
@@ -578,14 +560,6 @@ export const useApp = create<AppStore>((set, get) => {
     async refreshDevices() {
       try {
         set({ devices: await call<LaunchDevice[]>(Ipc.devicesList) })
-      } catch {
-        // keep previous
-      }
-    },
-
-    async refreshCases() {
-      try {
-        set({ cases: await call<LaunchCase[]>(Ipc.casesList) })
       } catch {
         // keep previous
       }

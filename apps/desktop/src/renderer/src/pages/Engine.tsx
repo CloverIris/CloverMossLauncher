@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Events, Ipc } from '@shared/channels'
 import type { ManagedHost, MossInferDownloadState } from '@shared/types'
 import { call, onEvent } from '../lib/api'
+import { useApp } from '../store'
 import { bytes, dateTime } from '../lib/format'
-import { Button, Card, IconButton, Modal, Pill, Spinner, useToast } from '../components/ui'
+import { Button, Card, IconButton, Input, Modal, Pill, Spinner, useToast } from '../components/ui'
 
 interface LocalEngineInfo {
   available: boolean
@@ -15,6 +16,8 @@ interface LocalEngineInfo {
 
 export function EnginePage(): React.JSX.Element {
   const toast = useToast()
+  const settings = useApp((state) => state.settings)
+  const [githubToken, setGithubToken] = useState(settings?.githubToken ?? '')
   const [engine, setEngine] = useState<LocalEngineInfo | null>(null)
   const [download, setDownload] = useState<MossInferDownloadState | null>(null)
   const [probe, setProbe] = useState<Record<string, unknown> | null>(null)
@@ -44,6 +47,7 @@ export function EnginePage(): React.JSX.Element {
   }, [toast])
 
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => { setGithubToken(settings?.githubToken ?? '') }, [settings?.githubToken])
   useEffect(() => onEvent<MossInferDownloadState>(Events.mossInferDownload, setDownload), [])
 
   async function runDownload(selected: 'bundled' | 'system-cuda', flavour?: 'cu12' | 'cu13', cudaWheels = false): Promise<void> {
@@ -56,6 +60,15 @@ export function EnginePage(): React.JSX.Element {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function saveGithubToken(): Promise<void> {
+    try {
+      await call(Ipc.settingsUpdate, { githubToken: githubToken.trim() || null })
+      toast.push('GitHub Token 已保存', 'success')
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
     }
   }
 
@@ -213,6 +226,17 @@ export function EnginePage(): React.JSX.Element {
           </p>
         ) : null}
 
+        <div className="mt-3 grid gap-2 border-t border-[var(--color-border-subtle)] pt-3 sm:grid-cols-[1fr_auto]">
+          <label className="space-y-1">
+            <span className="text-[10px] text-[var(--color-text-tertiary)]">GitHub Token（仅 Actions artifact 需要）</span>
+            <Input type="password" value={githubToken} onChange={(event) => setGithubToken(event.target.value)} placeholder="github_pat_… / ghp_…" autoComplete="new-password" />
+          </label>
+          <Button tone="secondary" className="self-end" onClick={() => void saveGithubToken()}>保存 Token</Button>
+          <p className="text-[9px] leading-4 text-[var(--color-text-tertiary)] sm:col-span-2">
+            上游当前没有 GitHub Release，稳定包会回退到最新成功 CI artifact；artifact 下载需要 token，token 只在本地调用 GitHub API，远端只接收带签名的临时 URL。
+          </p>
+        </div>
+
         {download ? (
           <div className="mt-3 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.025] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
@@ -243,6 +267,11 @@ export function EnginePage(): React.JSX.Element {
           </div>
           <Pill tone="amber">远端接入中</Pill>
         </div>
+        {!githubToken.trim() ? (
+          <div className="mt-3 rounded border border-amber-500/25 bg-amber-500/[0.05] px-2.5 py-2 text-[9.5px] leading-4 text-amber-200">
+            上游目前没有 GitHub Release，远端安装需要 GitHub Token；Token 只在本地调用 GitHub API，不会发到远端。
+          </div>
+        ) : null}
         <div className="mt-3 space-y-1.5">
           {hosts.length === 0 ? <p className="text-[10px] text-[var(--color-text-tertiary)]">还没有 SSH 主机。先在设备页添加 Linux NVIDIA 主机。</p> : null}
           {hosts.map((host) => {
@@ -256,7 +285,7 @@ export function EnginePage(): React.JSX.Element {
                 <div className="flex shrink-0 items-center gap-1.5">
                   {status ? <Pill tone={status.available ? 'accent' : 'red'}>{status.available ? 'ready' : 'missing'}</Pill> : null}
                   <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
-                  <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>{installingRemote === host.id ? <Spinner className="size-3" /> : '安装引擎'}</Button>
+                  {installingRemote === host.id ? <span className="text-[8.5px] text-amber-300">远端下载/解压中…</span> : <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>安装引擎</Button>}
                   <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
                 </div>
               </div>

@@ -71,7 +71,7 @@ pnpm dev
 启动后：
 
 1. 打开底部「引擎」页。
-2. 本机安装引擎：默认检查系统 `cuBLASLt`；缺库时可选择 bundled 包或原生 CUDA wheel。
+2. 本机安装引擎：上游暂无 Release 时使用最新 CI artifact，需要 GitHub Token；默认检查系统 `cuBLASLt`，缺库可选 bundled 或原生 CUDA wheel。
 3. 在「模型」页准备 MOSS-Image 权重。
 4. 回到「创作」，选择模型/引擎/设备，写提示词并开始生成。
 5. 远端：先在「设备」添加 Linux SSH 主机，配置 `engineRoot`、`outputRoot`，在「引擎」安装/检测并准备远端模型。

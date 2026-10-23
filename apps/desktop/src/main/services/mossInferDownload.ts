@@ -44,7 +44,7 @@ export function cancelMossInferDownload(): MossInferDownloadState | null {
   return current
 }
 
-function resolveGithubToken(settings: Settings): string | null {
+export function resolveGithubToken(settings: Settings): string | null {
   if (settings.githubToken) return settings.githubToken
   for (const key of ['GH_TOKEN', 'GITHUB_TOKEN']) {
     const value = process.env[key]?.trim()
@@ -325,7 +325,21 @@ async function downloadAndInstall(
   settings: Settings,
   cudaWheels = false,
 ): Promise<{ serverPath: string; stamp: string; effectiveVariant: Variant; fallbackNote?: string }> {
-  const source = channel === 'stable' ? await queryStable(flavour, variant) : await queryDev(flavour, variant, settings)
+  let effectiveChannel: 'stable' | 'dev' = channel
+  let source: Source
+  if (channel === 'stable') {
+    try {
+      source = await queryStable(flavour, variant)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!/404|没有.*变体|没有 Linux|Not Found/i.test(message)) throw error
+      publish({ phase: 'querying', version: '上游没有 Release，回退到最新 CI artifact' })
+      effectiveChannel = 'dev'
+      source = await queryDev(flavour, variant, settings)
+    }
+  } else {
+    source = await queryDev(flavour, variant, settings)
+  }
   publish({ phase: 'downloading', version: source.label, bytes: 0, totalBytes: source.totalHint })
   const workDir = join(paths.mossinfer(), 'downloads')
   mkdirSync(workDir, { recursive: true })
@@ -336,7 +350,7 @@ async function downloadAndInstall(
   let archivePath = downloadPath
   let effectiveVariant = source.effectiveVariant
   let fallbackNote = source.fallbackNote
-  if (channel === 'dev') {
+  if (effectiveChannel === 'dev') {
     // The artifact is an outer zip wrapping the CPack archives + their .sha256 files.
     // Older CI runs predate the system-cuda variant: fall back to the bundled archive
     // from the same artifact (no second download).
