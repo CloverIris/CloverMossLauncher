@@ -11,13 +11,12 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Ipc } from '@shared/channels'
 import type { AiProviderInfo } from '@shared/ai'
 import type { GbcImageResult, GbcRunResult } from '@shared/gbc'
 import type { BranchInfo, CommitInfo, GbcVersion } from '@shared/types'
 import { call } from '../lib/api'
-import { cloverUrl } from '../lib/clover'
 import { Button, Field, Input, Modal, Select, Spinner, Switch, useToast } from './ui'
 
 interface Props {
@@ -46,6 +45,10 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
   const [files, setFiles] = useState<string[]>([])
   const [folderImages, setFolderImages] = useState<Array<{ path: string; name: string }>>([])
   const [selectedPaths, setSelectedPaths] = useState<string[]>([])
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const [visibleCount, setVisibleCount] = useState(60)
+  const [detailThumb, setDetailThumb] = useState('')
+  const thumbRequests = useRef(new Set<string>())
   const [detector, setDetector] = useState<'owlv2' | 'sam3'>('owlv2')
   const [sidecarJson, setSidecarJson] = useState(false)
   const [sidecarTxt, setSidecarTxt] = useState(false)
@@ -118,6 +121,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
       const next = await call<{ path: string; images: Array<{ path: string; name: string }> }>(Ipc.gbcListImages, { folder: path })
       setFolderImages(next.images)
       setSelectedPaths(next.images.map((image) => image.path))
+      setVisibleCount(60)
       setInputMode('folder')
       toast.push(`扫描到 ${next.images.length} 张图片`, 'info')
     } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') }
@@ -136,6 +140,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
     if (!paths.length) return
     setFiles((current) => [...new Set([...current, ...paths])])
     setSelectedPaths((current) => [...new Set([...current, ...paths])])
+    setVisibleCount((current) => Math.max(current, 60))
     setInputMode('files')
   }
 
@@ -233,10 +238,41 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
     }
   }
 
+  const availableImages = useMemo(
+    () => inputMode === 'folder' ? folderImages : files.map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? path })),
+    [inputMode, folderImages, files],
+  )
+  const visibleImages = useMemo(() => availableImages.slice(0, visibleCount), [availableImages, visibleCount])
+
+  useEffect(() => {
+    if (!open) return
+    const missing = visibleImages.map((image) => image.path).filter((path) => !thumbs[path] && !thumbRequests.current.has(path))
+    if (!missing.length) return
+    const batch = missing.slice(0, 60)
+    for (const path of batch) thumbRequests.current.add(path)
+    void call<Array<{ path: string; dataUrl: string }>>(Ipc.gbcThumbnails, { paths: batch, width: 180 })
+      .then((rows) => setThumbs((current) => {
+        const next = { ...current }
+        for (const row of rows) if (row.dataUrl) next[row.path] = row.dataUrl
+        return next
+      }))
+      .catch(() => undefined)
+  }, [open, visibleImages, thumbs])
+
   const selected = result?.images.find((image) => image.key === selectedKey) ?? result?.images[0] ?? null
   const selectedResult = result && selected
     ? { ...result, vertices: selected.vertices, summary: selected.summary }
     : null
+
+  useEffect(() => {
+    if (!selected?.path) { setDetailThumb(''); return }
+    let cancelled = false
+    setDetailThumb('')
+    void call<Array<{ path: string; dataUrl: string }>>(Ipc.gbcThumbnails, { paths: [selected.path], width: 1400 })
+      .then((rows) => { if (!cancelled) setDetailThumb(rows[0]?.dataUrl ?? '') })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [selected?.path])
 
   async function copyResult(): Promise<void> {
     if (!selected) return
@@ -354,7 +390,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
                 </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_220px]">
                   <div className="relative overflow-hidden rounded border border-[var(--color-border-subtle)] bg-black/25">
-                    <img src={cloverUrl(selected.path)} alt={selected.name} className="block max-h-[420px] w-full object-contain" />
+                    {detailThumb ? <img src={detailThumb} alt={selected.name} className="block max-h-[420px] w-full object-contain" /> : <div className="flex h-[280px] items-center justify-center text-[10px] text-[var(--color-text-tertiary)]">加载预览…</div>}
                     <div className="pointer-events-none absolute inset-0">
                       {selected.vertices.filter((vertex) => vertex.bbox).map((vertex, index) => {
                         const box = vertex.bbox!
@@ -409,7 +445,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
                 const checked = selectedPaths.includes(image.path)
                 return (
                   <button key={image.path} type="button" onClick={() => setSelectedPaths((current) => checked ? current.filter((path) => path !== image.path) : [...current, image.path])} className={`group relative aspect-square overflow-hidden rounded border text-left ${checked ? 'border-accent-400 ring-1 ring-accent-400/40' : 'border-[var(--color-border-subtle)] opacity-60 hover:opacity-100'}`}>
-                    <img src={cloverUrl(image.path)} alt={image.name} loading="lazy" className="size-full object-cover" />
+                    {thumbs[image.path] ? <img src={thumbs[image.path]} alt={image.name} loading="lazy" className="size-full object-cover" /> : <span className="flex size-full items-center justify-center text-[8px] text-[var(--color-text-tertiary)]">加载中…</span>}
                     <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1.5 py-1 text-[8px] text-white/85">{image.name}</span>
                     <span className={`absolute right-1 top-1 flex size-4 items-center justify-center rounded border text-[9px] ${checked ? 'border-accent-300 bg-accent-500 text-white' : 'border-white/40 bg-black/35 text-transparent'}`}>✓</span>
                   </button>
@@ -417,6 +453,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
               })}
               {(inputMode === 'folder' ? folderImages.length : files.length) === 0 ? <div className="col-span-full py-10 text-center text-[10px] text-[var(--color-text-tertiary)]">选择目录或添加图片后，这里直接显示缩略图</div> : null}
             </div>
+            {availableImages.length > visibleImages.length ? <div className="mt-2 flex items-center justify-center gap-2"><span className="text-[8.5px] text-[var(--color-text-tertiary)]">已显示 {visibleImages.length} / {availableImages.length}</span><Button tone="ghost" onClick={() => setVisibleCount((count) => count + 60)}>加载更多</Button></div> : null}
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">

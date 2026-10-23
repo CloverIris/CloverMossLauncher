@@ -21,6 +21,7 @@ import {
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, installGbcEnv, listGbcImages, runGbc } from './services/gbc'
+import { nativeImage } from 'electron'
 import { createGbcVersion, listGbcBranches, listGbcCommits, listGbcVersions, removeGbcVersion } from './services/gbcGit'
 import { closeSshTerminal, inputSshTerminal, listSshTerminals, openSshTerminal } from './services/sshSessions'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
@@ -139,6 +140,21 @@ export function registerIpc(): void {
   handle(Ipc.gbcInstallEnv, schemas.gbcInstallEnv, ({ versionId }) => installGbcEnv(versionId))
 
   handle(Ipc.gbcListImages, schemas.gbcListImages, ({ folder }) => listGbcImages(folder))
+
+  handle(Ipc.gbcThumbnails, schemas.gbcThumbnails, ({ paths, width }) => {
+    return paths.map((path: string) => {
+      try {
+        const image = nativeImage.createFromPath(path)
+        if (image.isEmpty()) return { path, dataUrl: '' }
+        const size = image.getSize()
+        const scale = Math.min(1, width / size.width)
+        const resized = scale < 1 ? image.resize({ width: Math.max(1, Math.round(size.width * scale)), quality: 'good' }) : image
+        return { path, dataUrl: resized.toDataURL() }
+      } catch {
+        return { path, dataUrl: '' }
+      }
+    })
+  })
 
   handle(Ipc.gbcRun, schemas.gbcRun, (input) => runGbc(input))
 
