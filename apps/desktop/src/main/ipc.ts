@@ -41,6 +41,7 @@ import {
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
+import { localEngineInfo, probeLocalEngine } from './services/engines'
 import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
 import { openWindow } from './windows'
@@ -296,6 +297,10 @@ export function registerIpc(): void {
   handle(Ipc.mossInferDownload, schemas.mossInferDownload, ({ channel, flavour, variant }) =>
     downloadMossInfer(channel, flavour, variant),
   )
+
+  handle(Ipc.engineStatus, null, () => localEngineInfo())
+
+  handle(Ipc.engineProbe, null, () => probeLocalEngine())
 
   handle(Ipc.mossInferDownloadState, null, () => getMossInferDownloadState())
 

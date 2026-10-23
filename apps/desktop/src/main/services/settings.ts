@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   galleryRoots: [],
   homeBackground: null,
   trainerRoot: null,
-  inferenceBackend: 'runner',
+  inferenceBackend: 'mossinfer',
   mossInferServerPath: null,
   mossInferMemoryMode: 'balanced',
   mossInferTier: 'auto',

@@ -12,6 +12,7 @@ import { UpdateDialog } from './components/UpdateDialog'
 import { GalleryPage } from './pages/Gallery'
 import { DiagnosticsPage } from './pages/Diagnostics'
 import { DevicesPage } from './pages/Devices'
+import { EnginePage } from './pages/Engine'
 import { StudioPage } from './pages/Studio'
 import { InstanceDetailPage } from './pages/InstanceDetail'
 import { InstancesPage } from './pages/Instances'
@@ -55,7 +56,7 @@ function useAppBackground(): React.CSSProperties {
 
 const PAGES = [
   { to: '/studio', label: '创作', title: 'Studio', icon: LayoutGrid },
-  { to: '/instances', label: '实例', title: '实例', icon: Boxes },
+  { to: '/engines', label: '引擎', title: '引擎', icon: Boxes },
   { to: '/models', label: '模型', title: '模型与下载', icon: Package },
   { to: '/devices', label: '设备', title: '设备与连接', icon: Cpu },
   { to: '/training', label: '训练', title: '训练', icon: GraduationCap },
@@ -128,6 +129,7 @@ function StudioShell(): React.JSX.Element {
           <ErrorBoundary>
             <Routes>
               <Route path="/studio" element={<StudioPage />} />
+              <Route path="/engines" element={<EnginePage />} />
               <Route path="/instances" element={<InstancesPage />} />
               <Route path="/instances/:id" element={<InstanceDetailPage />} />
               <Route path="/models" element={<ModelsPage />} />
