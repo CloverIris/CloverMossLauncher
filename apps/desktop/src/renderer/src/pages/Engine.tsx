@@ -46,10 +46,10 @@ export function EnginePage(): React.JSX.Element {
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => onEvent<MossInferDownloadState>(Events.mossInferDownload, setDownload), [])
 
-  async function runDownload(selected: 'bundled' | 'system-cuda', flavour?: 'cu12' | 'cu13'): Promise<void> {
+  async function runDownload(selected: 'bundled' | 'system-cuda', flavour?: 'cu12' | 'cu13', cudaWheels = false): Promise<void> {
     setBusy(true)
     try {
-      const next = await call<MossInferDownloadState>(Ipc.mossInferDownload, { channel, variant: selected, flavour })
+      const next = await call<MossInferDownloadState>(Ipc.mossInferDownload, { channel, variant: selected, flavour, cudaWheels })
       setDownload(next)
       await refresh()
     } catch (error) {
@@ -103,6 +103,19 @@ export function EnginePage(): React.JSX.Element {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
       setPreparing(null)
+    }
+  }
+
+  async function installCudaWheels(): Promise<void> {
+    setBusy(true)
+    try {
+      const result = await call<{ installed: string[]; packages: string[] }>(Ipc.mossInferCudaLibs)
+      toast.push(`CUDA 库已解压：${result.installed.length} 个文件`, 'success')
+      await refresh()
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -165,6 +178,9 @@ export function EnginePage(): React.JSX.Element {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
+            <Button tone="ghost" onClick={() => void installCudaWheels()} disabled={busy || !engine?.available}>
+              <ShieldCheck className="size-3.5" /> 补 CUDA 库
+            </Button>
             <Button tone="secondary" onClick={() => void probeEngine()} disabled={busy || !engine?.available}>
               {busy ? <Spinner className="size-3.5" /> : <SquareTerminal className="size-3.5" />} 检测 hello
             </Button>
@@ -257,13 +273,13 @@ export function EnginePage(): React.JSX.Element {
         footer={
           <>
             <Button tone="ghost" onClick={() => setFallbackOpen(false)}>取消</Button>
-            <Button tone="primary" onClick={() => { setFallbackOpen(false); void runDownload('bundled') }}>下载 bundled（+700MB）</Button>
+            <Button tone="primary" onClick={() => { setFallbackOpen(false); void runDownload('system-cuda', preflight?.preferredFlavour ?? 'cu13', true) }}>下载 system + 解压 CUDA 库</Button>
+            <Button tone="secondary" onClick={() => { setFallbackOpen(false); void runDownload('bundled') }}>下载 bundled（+700MB）</Button>
           </>
         }
       >
         <div className="p-4 text-[10.5px] leading-5 text-[var(--color-text-secondary)]">
-          system-cuda 包需要系统提供 libcublasLt。MossStudio 不会再用 uv/pip 自动安装 CUDA 库。
-          <br />可以继续下载完整 bundled 包，或先自行安装匹配的 CUDA/cuBLASLt 后重试。
+          system-cuda 包需要系统提供 libcublasLt。可以直接下载 system 引擎并由 MossStudio 原生解压 NVIDIA wheels（不需要 Python/uv/pip），或下载完整 bundled 包。
         </div>
       </Modal>
     </div>

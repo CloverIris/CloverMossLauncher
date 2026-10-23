@@ -2,7 +2,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { Square, SquareTerminal } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../store'
 import { cn } from '../components/ui'
 
@@ -32,6 +32,7 @@ export function TerminalPage(): React.JSX.Element {
   const loadJobLogs = useApp((state) => state.loadJobLogs)
   const sendJobInput = useApp((state) => state.sendJobInput)
   const cancelJob = useApp((state) => state.cancelJob)
+  const [engine, setEngine] = useState('all')
 
   const ordered = useMemo(
     () =>
@@ -41,7 +42,10 @@ export function TerminalPage(): React.JSX.Element {
       }),
     [jobs],
   )
-  const active = ordered.find((job) => job.id === activeJobId) ?? ordered[0] ?? null
+  const engineKey = (job: typeof jobs[number]): string => job.hostId ? `remote:${job.hostId}` : 'local'
+  const engines = [...new Set(ordered.map(engineKey))]
+  const visible = engine === 'all' ? ordered : ordered.filter((job) => engineKey(job) === engine)
+  const active = visible.find((job) => job.id === activeJobId) ?? visible[0] ?? null
   const logs = active ? logsByJob[active.id] ?? [] : []
 
   const hostRef = useRef<HTMLDivElement>(null)
@@ -51,8 +55,9 @@ export function TerminalPage(): React.JSX.Element {
   const activeIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!activeJobId && ordered[0]) setActiveJob(ordered[0].id)
-  }, [activeJobId, ordered, setActiveJob])
+    if (engine !== 'all' && !engines.includes(engine)) setEngine('all')
+    if (!activeJobId && visible[0]) setActiveJob(visible[0].id)
+  }, [activeJobId, visible, setActiveJob, engine, engines])
 
   useEffect(() => {
     if (active && !logsByJob[active.id]) void loadJobLogs(active.id)
@@ -161,10 +166,25 @@ export function TerminalPage(): React.JSX.Element {
         <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[11px] font-medium">
             <SquareTerminal className="size-3.5 text-[var(--color-text-tertiary)]" />
-            任务
+            引擎控制台
           </div>
-          <span className="text-[9.5px] text-[var(--color-text-tertiary)]">{ordered.length}</span>
+          <span className="text-[9.5px] text-[var(--color-text-tertiary)]">{visible.length}</span>
         </header>
+        <div className="flex flex-wrap gap-1 border-b border-[var(--color-border-subtle)] px-1.5 py-1.5">
+          {['all', ...engines].map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setEngine(key)}
+              className={cn(
+                'rounded border px-1.5 py-0.5 text-[8.5px]',
+                engine === key ? 'border-accent-500/40 bg-accent-500/10 text-accent-200' : 'border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]',
+              )}
+            >
+              {key === 'all' ? '全部' : key === 'local' ? '本机' : `远端 ${key.slice('remote:'.length).slice(-6)}`}
+            </button>
+          ))}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {ordered.length === 0 ? (
             <p className="px-3 py-8 text-center text-[10.5px] leading-5 text-[var(--color-text-tertiary)]">
@@ -173,7 +193,7 @@ export function TerminalPage(): React.JSX.Element {
               去 MossStudio 开始生成。
             </p>
           ) : (
-            ordered.map((job) => (
+            visible.map((job) => (
               <button
                 key={job.id}
                 type="button"
@@ -191,7 +211,7 @@ export function TerminalPage(): React.JSX.Element {
                 <span className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', stateColor[job.state])} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[11px] font-medium text-[var(--color-text)]">
-                    {job.caseName ?? job.instanceName}
+                    {job.params.prompt.trim().slice(0, 32) || job.instanceName}
                   </span>
                   <span className="mt-0.5 block truncate text-[9.5px] text-[var(--color-text-tertiary)]">
                     {job.kind === 'training' ? '训练' : '推理'} · {stateLabel[job.state]} · {job.instanceName}
@@ -226,7 +246,7 @@ export function TerminalPage(): React.JSX.Element {
         <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] px-3">
           <div className="flex min-w-0 items-baseline gap-2">
             <span className="truncate text-[11px] font-medium">
-              {active ? active.caseName ?? active.instanceName : '没有选中任务'}
+              {active ? active.params.prompt.trim().slice(0, 48) || active.instanceName : '没有选中任务'}
             </span>
             {active ? (
               <span className="text-[9.5px] text-[var(--color-text-tertiary)]">

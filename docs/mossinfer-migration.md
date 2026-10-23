@@ -8,7 +8,8 @@
   - `hello` 探测
   - stable/dev 下载
   - 默认 system-cuda，下载前检测系统 cuBLASLt
-  - 缺库时弹窗选择 bundled（+700MB），不再用 uv/pip 自动装库
+  - 缺库时弹窗：bundled，或下载 system + 原生解压 NVIDIA wheels
+  - 不再用 uv/pip 自动装库
   - 下载进度/取消
   - SSH 主机列表（远端目标占位）
 - 无 Instance 的引擎任务

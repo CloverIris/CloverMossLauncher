@@ -11,6 +11,7 @@ import { emit } from '../lib/events'
 import { paths } from '../lib/paths'
 import { run } from '../lib/run'
 import { probeMossInfer, shutdownMossInfer } from './mossInfer'
+import { installCudaWheels } from './cudaWheels'
 import { getSettings, updateSettings } from './settings'
 
 /**
@@ -322,6 +323,7 @@ async function downloadAndInstall(
   flavour: 'cu12' | 'cu13',
   variant: Variant,
   settings: Settings,
+  cudaWheels = false,
 ): Promise<{ serverPath: string; stamp: string; effectiveVariant: Variant; fallbackNote?: string }> {
   const source = channel === 'stable' ? await queryStable(flavour, variant) : await queryDev(flavour, variant, settings)
   publish({ phase: 'downloading', version: source.label, bytes: 0, totalBytes: source.totalHint })
@@ -378,7 +380,11 @@ async function downloadAndInstall(
   rmSync(extractDir, { recursive: true, force: true })
   await extractArchive(archivePath, extractDir)
   const { serverPath, installDir } = await installTree(extractDir, source.stamp)
-  rmSync(archivePath, { force: true }) // free the archive before the CUDA-libs download
+  rmSync(archivePath, { force: true })
+  if (effectiveVariant === 'system-cuda' && cudaWheels) {
+    publish({ phase: 'cuda_libs' })
+    await installCudaWheels(installDir, flavour)
+  } // free the archive before the CUDA-libs download
   rmSync(workDir, { recursive: true, force: true })
   return { serverPath, stamp: source.stamp, effectiveVariant, fallbackNote }
 }
@@ -387,6 +393,7 @@ export async function downloadMossInfer(
   channel: 'stable' | 'dev',
   flavourInput?: 'cu12' | 'cu13',
   variantInput?: Variant,
+  cudaWheels = false,
 ): Promise<MossInferDownloadState> {
   if (current && current.phase !== 'done' && current.phase !== 'error') return current
   const settings = getSettings()
@@ -404,14 +411,14 @@ export async function downloadMossInfer(
   publish({ phase: 'querying' })
   try {
     let flavour = flavourInput ?? 'cu13'
-    let installed = await downloadAndInstall(channel, flavour, variant, settings)
+    let installed = await downloadAndInstall(channel, flavour, variant, settings, cudaWheels)
     // Upstream decision procedure: install cu13 by default, probe, fall back to cu12.
     let probe = await probeMossInfer(installed.serverPath)
     let recommended = String((probe['probe'] as Record<string, unknown> | undefined)?.['recommended_flavour'] ?? '')
     if (flavour === 'cu13' && recommended === 'cu12') {
       publish({ phase: 'querying', version: '驱动只支持 CUDA 12，改下 cu12 包' })
       flavour = 'cu12'
-      installed = await downloadAndInstall(channel, flavour, variant, settings)
+      installed = await downloadAndInstall(channel, flavour, variant, settings, cudaWheels)
       probe = await probeMossInfer(installed.serverPath)
       recommended = String((probe['probe'] as Record<string, unknown> | undefined)?.['recommended_flavour'] ?? '')
     }

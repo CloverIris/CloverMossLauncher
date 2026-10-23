@@ -23,6 +23,7 @@ import { chat, listConversations, listProviders, removeConversation, removeProvi
 import { gbcStatus, runGbc } from './services/gbc'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { detectSystemCuda } from './services/systemCuda'
+import { installMossInferCudaLibs } from './services/cudaWheels'
 import { prepareRemoteDefaultModel } from './services/remoteModels'
 import { installRemoteEngine } from './services/remoteEngineInstall'
 import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
@@ -268,8 +269,8 @@ export function registerIpc(): void {
 
   handle(Ipc.updatesCancel, schemas.updatesCancel, ({ version }) => cancelUpdateDownload(version))
 
-  handle(Ipc.mossInferDownload, schemas.mossInferDownload, ({ channel, flavour, variant }) =>
-    downloadMossInfer(channel, flavour, variant),
+  handle(Ipc.mossInferDownload, schemas.mossInferDownload, ({ channel, flavour, variant, cudaWheels }) =>
+    downloadMossInfer(channel, flavour, variant, cudaWheels),
   )
 
   handle(Ipc.engineStatus, null, () => localEngineInfo())
@@ -279,6 +280,8 @@ export function registerIpc(): void {
   handle(Ipc.engineRemoteStatus, schemas.engineRemoteStatus, ({ hostId }) => remoteEngineInfo(hostId))
 
   handle(Ipc.engineSystemCuda, schemas.engineSystemCuda, () => detectSystemCuda())
+
+  handle(Ipc.mossInferCudaLibs, schemas.mossInferCudaLibs, () => installMossInferCudaLibs())
 
   handle(Ipc.engineInstallRemote, schemas.engineInstallRemote, async ({ hostId }) => {
     const host = getTrainingHost(getSettings(), hostId)

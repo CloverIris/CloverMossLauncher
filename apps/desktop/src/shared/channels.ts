@@ -106,6 +106,7 @@ export const Ipc = {
   enginePrepareRemoteModel: 'engine:prepare-remote-model',
   engineInstallRemote: 'engine:install-remote',
   engineSystemCuda: 'engine:system-cuda',
+  mossInferCudaLibs: 'engine:install-cuda-wheels',
 } as const
 
 export type IpcChannel = (typeof Ipc)[keyof typeof Ipc]

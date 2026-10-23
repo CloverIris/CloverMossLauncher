@@ -59,6 +59,7 @@ export const schemas = {
     channel: z.enum(['stable', 'dev']),
     flavour: z.enum(['cu12', 'cu13']).optional(),
     variant: z.enum(['system-cuda', 'bundled']).optional(),
+    cudaWheels: z.boolean().optional(),
   }),
 
   gitBranches: z
@@ -248,6 +249,8 @@ export const schemas = {
   engineInstallRemote: z.object({ hostId: z.string().min(1).max(80) }),
 
   engineSystemCuda: z.null(),
+
+  mossInferCudaLibs: z.null(),
 
   gbcRun: z.object({
     folder: z.string().min(1).max(4096),
