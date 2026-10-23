@@ -423,6 +423,10 @@ main::-webkit-scrollbar {
 .model-select option { background: #202329; color: #e9eef7; }
 
 /* Preserve the shared wallpaper; tint only the model cards for readability. */
+.model-management .grid > .glass {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
+}
 .model-management { --color-text-tertiary: #a1acba; }
 .model-management .glass,
 .glass.model-binding-panel {

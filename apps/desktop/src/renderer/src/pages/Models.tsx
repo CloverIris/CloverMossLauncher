@@ -16,7 +16,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Ipc } from '@shared/channels'
 import type { AdapterEntry, DownloadTask, ManagedHost, ModelEntry } from '@shared/types'
 import { Events } from '@shared/channels'
@@ -83,6 +83,7 @@ export function ModelsPage(): React.JSX.Element {
   const [removing, setRemoving] = useState<Entry | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [mode, setMode] = useState<'local' | 'remote'>('local')
+  const deferredQuery = useDeferredValue(query)
   const settings = useApp((s) => s.settings)
   const [localRoot, setLocalRoot] = useState(settings?.modelsRoot ?? '')
   const [localBusy, setLocalBusy] = useState(false)
@@ -142,7 +143,7 @@ export function ModelsPage(): React.JSX.Element {
                 (format === 'all' || (m.format ?? 'diffusers') === format),
             )
             .map((value) => ({ kind: 'model', value }))
-    const q = query.trim().toLowerCase()
+    const q = deferredQuery.trim().toLowerCase()
     return entries.filter(
       ({ value }) =>
         (!installedOnly || value.installed) &&
@@ -151,7 +152,7 @@ export function ModelsPage(): React.JSX.Element {
             .toLowerCase()
             .includes(q)),
     )
-  }, [catalog, category, format, installedOnly, query])
+  }, [catalog, category, format, installedOnly, deferredQuery])
 
   async function install(): Promise<void> {
     if (!bundle) return
@@ -381,36 +382,53 @@ export function ModelsPage(): React.JSX.Element {
         )}
       </Card>
 
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-[13px] font-semibold">远端模型清单</h3>
-            <p className="mt-0.5 text-[9px] text-[var(--color-text-tertiary)]">{remoteScan ? `${remoteScan.root} · 扫描到 ${remoteScan.files} 个文件` : '点击扫描检查远端模型部署状态'}</p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模型…" className="h-7 w-40" />
-            <Button tone="secondary" onClick={() => void scanRemote()} disabled={remoteScanBusy}>{remoteScanBusy ? <Spinner className="size-3.5" /> : '扫描模型'}</Button>
-          </div>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav aria-label="远端组件分类" className="flex max-w-full gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)]">
+            {categories.map(({ id, name, icon: Icon }) => (
+              <button key={id} onClick={() => setRemoteCategory(id)} className={cn('flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[12px] transition-colors', remoteCategory === id ? 'border-accent-400 text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]')}>
+                <Icon className="size-3.5" />{name}
+              </button>
+            ))}
+          </nav>
+          <label className="flex h-8 w-full items-center gap-2 rounded-[4px] border border-[var(--color-border-subtle)] bg-white/[0.025] px-2.5 sm:w-52">
+            <Search className="size-3.5 shrink-0 text-[var(--color-text-tertiary)]" />
+            <input aria-label="搜索远端模型" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索名称或来源" className="w-full min-w-0 bg-transparent text-[12px] outline-none" />
+          </label>
         </div>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {categories.map((item) => <button key={item.id} type="button" onClick={() => setRemoteCategory(item.id)} className={cn('rounded border px-2 py-0.5 text-[9px]', remoteCategory === item.id ? 'border-accent-500/40 bg-accent-500/10 text-accent-200' : 'border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]')}>{item.name}</button>)}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {remoteCategory !== 'adapter' ? <select aria-label="远端组件格式" value={format} onChange={(event) => setFormat(event.target.value)} className="model-select"><option value="diffusers">Diffusers · 可本地运行</option><option value="comfyui">ComfyUI · 仅下载</option><option value="all">全部格式</option></select> : null}
+            <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><input type="checkbox" checked={installedOnly} onChange={(event) => setInstalledOnly(event.target.checked)} className="accent-[var(--color-accent-500)]" />仅已部署</label>
+          </div>
+          <span className="text-[11px] text-[var(--color-text-tertiary)]">{remoteScan ? `${remoteScan.root} · ${remoteScan.files} 个文件` : '扫描远端模型'}</span>
         </div>
-        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-          {(catalog?.models ?? []).filter((model) => (remoteCategory === 'all' || model.role === remoteCategory || (remoteCategory === 'dit' && model.role === 'full')) && (!query.trim() || `${model.name} ${model.repo}`.toLowerCase().includes(query.trim().toLowerCase()))).map((model) => {
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {(catalog?.models ?? []).filter((model) => (remoteCategory === 'all' || model.role === remoteCategory || (remoteCategory === 'dit' && model.role === 'full')) && (format === 'all' || (model.format ?? 'diffusers') === format) && (!deferredQuery.trim() || `${model.name} ${model.repo}`.toLowerCase().includes(deferredQuery.trim().toLowerCase()))).filter((model) => !installedOnly || remoteScan?.models.find((entry) => entry.id === model.id)?.installed).map((model) => {
             const scan = remoteScan?.models.find((entry) => entry.id === model.id)
+            const installed = Boolean(scan?.installed)
+            const working = remoteModelBusy === model.id
             return (
-              <div key={model.id} className="flex items-start justify-between gap-2 rounded border border-[var(--color-border-subtle)] px-2 py-1.5">
-                <div className="min-w-0"><div className="truncate text-[10px] font-medium">{model.name}</div><div className="truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">{model.repo}</div><div className="truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">{scan?.path ?? '未发现'}</div></div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <Pill tone={scan?.installed ? 'accent' : 'neutral'}>{scan?.installed ? '已部署' : '缺失'}</Pill>
-                  {scan?.installed && scan.path ? <Button tone="ghost" onClick={() => void deleteRemoteModel(model, scan.path!)} disabled={remoteModelBusy !== null}>删除</Button> : <Button tone="ghost" onClick={() => void downloadRemoteModel(model)} disabled={remoteModelBusy !== null || !remoteHost}>{remoteModelBusy === model.id ? <Spinner className="size-3" /> : '下载'}</Button>}
+              <Card key={model.id} className="flex min-w-0 flex-col p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5"><span className="truncate text-[13px] font-medium">{model.name}</span><Pill tone={model.provider === 'hf' ? 'blue' : 'neutral'}>{model.provider.toUpperCase()}</Pill><Pill tone="neutral">{model.precision.toUpperCase()}</Pill></div>
+                    <p className="mt-2 min-h-10 text-[12px] leading-5 text-[var(--color-text-secondary)]">{model.notes ?? '远端模型组件。'}</p>
+                  </div>
+                  <Pill tone={installed ? 'accent' : 'neutral'}>{installed ? '已部署' : '未部署'}</Pill>
                 </div>
-              </div>
+                <details className="my-2 text-[10px] text-[var(--color-text-tertiary)]"><summary className="cursor-pointer">来源与路径</summary><p className="mt-1 break-all font-mono">{model.repo}</p><p className="break-all font-mono">{scan?.path ?? '远端目录未发现此模型'}</p></details>
+                <div className="mt-auto flex items-center justify-between border-t border-[var(--color-border-subtle)] pt-3">
+                  <span className="text-[11px] tabular-nums text-[var(--color-text-tertiary)]">{bytes(model.sizeBytes)} <span className="ml-1.5">{model.license}</span></span>
+                  {installed && scan?.path ? <Button tone="ghost" onClick={() => void deleteRemoteModel(model, scan.path!)} disabled={working}>删除</Button> : <Button tone="secondary" onClick={() => void downloadRemoteModel(model)} disabled={working || !remoteHost}>{working ? <Spinner className="size-3.5" /> : <Download className="size-3.5" />}下载</Button>}
+                </div>
+              </Card>
             )
           })}
         </div>
-        {(catalog?.models?.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-[var(--color-text-tertiary)]">模型 catalog 尚未加载。</p> : null}
-      </Card>
+        {(catalog?.models?.length ?? 0) === 0 ? <EmptyState icon={<Package className="size-6" />} title="模型目录未加载" description="先刷新模型库。" /> : null}
+      </section>
 
       </div>
 
