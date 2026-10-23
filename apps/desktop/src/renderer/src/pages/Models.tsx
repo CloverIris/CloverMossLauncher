@@ -255,7 +255,7 @@ export function ModelsPage(): React.JSX.Element {
     } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteScanBusy(false) }
   }
 
-  async function downloadRemoteModel(model: ModelEntry): Promise<void> {
+  async function downloadRemoteModel(model: { id: string; name: string }): Promise<void> {
     if (!remoteHost) return
     setRemoteModelBusy(model.id)
     try {
@@ -265,7 +265,7 @@ export function ModelsPage(): React.JSX.Element {
       await scanRemote()
     } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteModelBusy(null) }
   }
-  async function deleteRemoteModel(model: ModelEntry, path: string): Promise<void> {
+  async function deleteRemoteModel(model: { id: string; name: string }, path: string): Promise<void> {
     if (!remoteHost) return
     if (!window.confirm(`删除远端模型文件？\n${path}`)) return
     setRemoteModelBusy(model.id)
@@ -404,6 +404,22 @@ export function ModelsPage(): React.JSX.Element {
           </div>
           <span className="text-[11px] text-[var(--color-text-tertiary)]">{remoteScan ? `${remoteScan.root} · ${remoteScan.files} 个文件` : '扫描远端模型'}</span>
         </div>
+        {remoteCategory === 'adapter' ? (
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            {(catalog?.adapters ?? []).filter((adapter) => !query.trim() || `${adapter.name} ${adapter.repo}`.toLowerCase().includes(query.trim().toLowerCase())).map((adapter) => {
+              const scan = remoteScan?.adapters.find((entry) => entry.id === adapter.id)
+              const installed = Boolean(scan?.installed)
+              const working = remoteModelBusy === adapter.id
+              return (
+                <Card key={adapter.id} className="flex min-w-0 flex-col p-4">
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-1.5"><span className="truncate text-[13px] font-medium">{adapter.name}</span><Pill tone={adapter.provider === 'hf' ? 'blue' : 'neutral'}>{adapter.provider.toUpperCase()}</Pill><Pill tone="neutral">{adapter.kind.toUpperCase()}</Pill></div><p className="mt-2 min-h-10 text-[12px] leading-5 text-[var(--color-text-secondary)]">{adapter.notes ?? '远端适配器。'}</p></div><Pill tone={installed ? 'accent' : 'neutral'}>{installed ? '已部署' : '未部署'}</Pill></div>
+                  <details className="my-2 text-[10px] text-[var(--color-text-tertiary)]"><summary className="cursor-pointer">来源与路径</summary><p className="mt-1 break-all font-mono">{adapter.repo}</p><p className="break-all font-mono">{scan?.path ?? '远端目录未发现此适配器'}</p></details>
+                  <div className="mt-auto flex items-center justify-between border-t border-[var(--color-border-subtle)] pt-3"><span className="text-[11px] tabular-nums text-[var(--color-text-tertiary)]">{bytes(adapter.sizeBytes)} <span className="ml-1.5">{adapter.license}</span></span>{installed && scan?.path ? <Button tone="ghost" onClick={() => void deleteRemoteModel(adapter, scan.path!)} disabled={working}>删除</Button> : <Button tone="secondary" onClick={() => void downloadRemoteModel(adapter)} disabled={working || !remoteHost}>{working ? <Spinner className="size-3.5" /> : <Download className="size-3.5" />}下载</Button>}</div>
+                </Card>
+              )
+            })}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {(catalog?.models ?? []).filter((model) => (remoteCategory === 'all' || model.role === remoteCategory || (remoteCategory === 'dit' && model.role === 'full')) && (format === 'all' || (model.format ?? 'diffusers') === format) && (!deferredQuery.trim() || `${model.name} ${model.repo}`.toLowerCase().includes(deferredQuery.trim().toLowerCase()))).filter((model) => !installedOnly || remoteScan?.models.find((entry) => entry.id === model.id)?.installed).map((model) => {
             const scan = remoteScan?.models.find((entry) => entry.id === model.id)
@@ -427,7 +443,9 @@ export function ModelsPage(): React.JSX.Element {
             )
           })}
         </div>
-        {(catalog?.models?.length ?? 0) === 0 ? <EmptyState icon={<Package className="size-6" />} title="模型目录未加载" description="先刷新模型库。" /> : null}
+        )}
+        {remoteCategory === 'adapter' && (catalog?.adapters?.length ?? 0) === 0 ? <p className="text-[10px] text-[var(--color-text-tertiary)]">没有适配器。</p> : null}
+        {remoteCategory !== 'adapter' && (catalog?.models?.length ?? 0) === 0 ? <EmptyState icon={<Package className="size-6" />} title="模型目录未加载" description="先刷新模型库。" /> : null}
       </section>
 
       </div>

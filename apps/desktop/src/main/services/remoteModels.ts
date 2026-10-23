@@ -1,4 +1,4 @@
-import type { Catalog, ModelEntry, TrainingHost } from '@shared/types'
+import type { AdapterEntry, Catalog, ModelEntry, TrainingHost } from '@shared/types'
 import { posixQuote, remoteAbsolute, sshExec } from './ssh'
 
 const HF = 'https://huggingface.co'
@@ -63,7 +63,7 @@ export async function prepareRemoteDefaultModel(
 
 export async function prepareRemoteModel(
   host: TrainingHost,
-  model: ModelEntry,
+  model: ModelEntry | AdapterEntry,
 ): Promise<{ path: string; revision: string; files: number }> {
   return prepareRemoteRepo(host, model.repo, model.revision || 'main', model.files)
 }

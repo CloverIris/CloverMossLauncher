@@ -361,7 +361,7 @@ export function registerIpc(): void {
     const host = getTrainingHost(getSettings(), hostId)
     if (!host) throw new Error('主机不存在')
     const catalog = await getCatalog(getSettings(), true)
-    const model = catalog.models.find((entry) => entry.id === modelId)
+    const model = catalog.models.find((entry) => entry.id === modelId) ?? catalog.adapters.find((entry) => entry.id === modelId)
     if (!model) throw new Error('模型不存在')
     return prepareRemoteModel(host, model)
   })
