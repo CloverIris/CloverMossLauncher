@@ -100,12 +100,12 @@ export const Ipc = {
   mossInferDownload: 'mossinfer:download',
   mossInferDownloadState: 'mossinfer:download-state',
   mossInferDownloadCancel: 'mossinfer:download-cancel',
-  mossInferCudaLibs: 'mossinfer:install-cuda-libs',
   engineStatus: 'engine:status',
   engineProbe: 'engine:probe',
   engineRemoteStatus: 'engine:remote-status',
   enginePrepareRemoteModel: 'engine:prepare-remote-model',
   engineInstallRemote: 'engine:install-remote',
+  engineSystemCuda: 'engine:system-cuda',
 } as const
 
 export type IpcChannel = (typeof Ipc)[keyof typeof Ipc]

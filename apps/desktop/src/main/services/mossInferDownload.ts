@@ -458,10 +458,6 @@ async function downloadAndInstall(
   await extractArchive(archivePath, extractDir)
   const { serverPath, installDir } = await installTree(extractDir, source.stamp)
   rmSync(archivePath, { force: true }) // free the archive before the CUDA-libs download
-  if (effectiveVariant === 'system-cuda') {
-    publish({ phase: 'cuda_libs' })
-    await installCudaLibraries(installDir, flavour, settings)
-  }
   rmSync(workDir, { recursive: true, force: true })
   return { serverPath, stamp: source.stamp, effectiveVariant, fallbackNote }
 }

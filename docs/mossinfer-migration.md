@@ -6,7 +6,9 @@
 - 引擎控制页（`/engines`）
   - 本机路径/状态
   - `hello` 探测
-  - stable/dev 下载、bundled/system CUDA、CUDA 库安装
+  - stable/dev 下载
+  - 默认 system-cuda，下载前检测系统 cuBLASLt
+  - 缺库时弹窗选择 bundled（+700MB），不再用 uv/pip 自动装库
   - 下载进度/取消
   - SSH 主机列表（远端目标占位）
 - 无 Instance 的引擎任务

@@ -4,7 +4,7 @@ import { Events, Ipc } from '@shared/channels'
 import type { ManagedHost, MossInferDownloadState } from '@shared/types'
 import { call, onEvent } from '../lib/api'
 import { bytes, dateTime } from '../lib/format'
-import { Button, Card, IconButton, Pill, Spinner, useToast } from '../components/ui'
+import { Button, Card, IconButton, Modal, Pill, Spinner, useToast } from '../components/ui'
 
 interface LocalEngineInfo {
   available: boolean
@@ -24,7 +24,9 @@ export function EnginePage(): React.JSX.Element {
   const [preparing, setPreparing] = useState<string | null>(null)
   const [installingRemote, setInstallingRemote] = useState<string | null>(null)
   const [channel, setChannel] = useState<'stable' | 'dev'>('stable')
-  const [variant, setVariant] = useState<'bundled' | 'system-cuda'>('bundled')
+  const [variant, setVariant] = useState<'bundled' | 'system-cuda'>('system-cuda')
+  const [fallbackOpen, setFallbackOpen] = useState(false)
+  const [preflight, setPreflight] = useState<{ supported: boolean; gpu: string; cublasLt: string[]; preferredFlavour?: 'cu12' | 'cu13'; error?: string } | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -44,10 +46,10 @@ export function EnginePage(): React.JSX.Element {
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => onEvent<MossInferDownloadState>(Events.mossInferDownload, setDownload), [])
 
-  async function install(): Promise<void> {
+  async function runDownload(selected: 'bundled' | 'system-cuda', flavour?: 'cu12' | 'cu13'): Promise<void> {
     setBusy(true)
     try {
-      const next = await call<MossInferDownloadState>(Ipc.mossInferDownload, { channel, variant })
+      const next = await call<MossInferDownloadState>(Ipc.mossInferDownload, { channel, variant: selected, flavour })
       setDownload(next)
       await refresh()
     } catch (error) {
@@ -55,6 +57,27 @@ export function EnginePage(): React.JSX.Element {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function install(): Promise<void> {
+    if (variant === 'system-cuda') {
+      setBusy(true)
+      try {
+        const status = await call<{ supported: boolean; gpu: string; cublasLt: string[]; preferredFlavour?: 'cu12' | 'cu13'; error?: string }>(Ipc.engineSystemCuda)
+        setPreflight(status)
+        if (!status.supported || !status.preferredFlavour) {
+          setFallbackOpen(true)
+          return
+        }
+        await runDownload('system-cuda', status.preferredFlavour)
+      } catch (error) {
+        toast.push(error instanceof Error ? error.message : String(error), 'error')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    await runDownload('bundled')
   }
 
   async function probeEngine(): Promise<void> {
@@ -109,19 +132,6 @@ export function EnginePage(): React.JSX.Element {
     }
   }
 
-  async function installCuda(): Promise<void> {
-    setBusy(true)
-    try {
-      const result = await call<{ installed: string[] }>(Ipc.mossInferCudaLibs)
-      toast.push(`CUDA 库已安装：${result.installed.length} 个文件`, 'success')
-      await refresh()
-    } catch (error) {
-      toast.push(error instanceof Error ? error.message : String(error), 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const downloading = download && !['done', 'error'].includes(download.phase)
 
   return (
@@ -158,9 +168,6 @@ export function EnginePage(): React.JSX.Element {
             <Button tone="secondary" onClick={() => void probeEngine()} disabled={busy || !engine?.available}>
               {busy ? <Spinner className="size-3.5" /> : <SquareTerminal className="size-3.5" />} 检测 hello
             </Button>
-            <Button tone="ghost" onClick={() => void installCuda()} disabled={busy || !engine?.available}>
-              <ShieldCheck className="size-3.5" /> 补 CUDA 库
-            </Button>
           </div>
         </div>
 
@@ -175,14 +182,20 @@ export function EnginePage(): React.JSX.Element {
           <label className="space-y-1">
             <span className="text-[10px] text-[var(--color-text-tertiary)]">包类型</span>
             <select value={variant} onChange={(event) => setVariant(event.target.value as 'bundled' | 'system-cuda')} className="app-input w-full">
-              <option value="bundled">bundled CUDA（推荐）</option>
-              <option value="system-cuda">system CUDA</option>
+              <option value="system-cuda">system CUDA（默认，需系统 cuBLASLt）</option>
+              <option value="bundled">bundled CUDA（+700MB，免系统库）</option>
             </select>
           </label>
           <Button tone="primary" className="self-end" onClick={() => void install()} disabled={busy || Boolean(downloading)}>
             <Download className="size-3.5" /> 下载/更新引擎
           </Button>
         </div>
+
+        {preflight ? (
+          <p className="mt-2 text-[9px] leading-4 text-[var(--color-text-tertiary)]">
+            预检：{preflight.gpu || preflight.error} · flavour {preflight.preferredFlavour ?? '无'} · cuBLASLt {preflight.cublasLt.length ? preflight.cublasLt.join(', ') : '未找到'}
+          </p>
+        ) : null}
 
         {download ? (
           <div className="mt-3 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.025] p-3">
@@ -235,6 +248,24 @@ export function EnginePage(): React.JSX.Element {
           })}
         </div>
       </Card>
+      <Modal
+        open={fallbackOpen}
+        onClose={() => setFallbackOpen(false)}
+        title="没有可用的系统 cuBLASLt"
+        description={preflight?.error ?? '系统 CUDA 库缺失或版本不匹配。'}
+        width="max-w-lg"
+        footer={
+          <>
+            <Button tone="ghost" onClick={() => setFallbackOpen(false)}>取消</Button>
+            <Button tone="primary" onClick={() => { setFallbackOpen(false); void runDownload('bundled') }}>下载 bundled（+700MB）</Button>
+          </>
+        }
+      >
+        <div className="p-4 text-[10.5px] leading-5 text-[var(--color-text-secondary)]">
+          system-cuda 包需要系统提供 libcublasLt。MossStudio 不会再用 uv/pip 自动安装 CUDA 库。
+          <br />可以继续下载完整 bundled 包，或先自行安装匹配的 CUDA/cuBLASLt 后重试。
+        </div>
+      </Modal>
     </div>
   )
 }

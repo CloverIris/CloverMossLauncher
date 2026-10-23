@@ -17,12 +17,12 @@ import {
   cancelMossInferDownload,
   downloadMossInfer,
   getMossInferDownloadState,
-  installMossInferCudaLibs,
 } from './services/mossInferDownload'
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
+import { detectSystemCuda } from './services/systemCuda'
 import { prepareRemoteDefaultModel } from './services/remoteModels'
 import { installRemoteEngine } from './services/remoteEngineInstall'
 import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
@@ -278,6 +278,8 @@ export function registerIpc(): void {
 
   handle(Ipc.engineRemoteStatus, schemas.engineRemoteStatus, ({ hostId }) => remoteEngineInfo(hostId))
 
+  handle(Ipc.engineSystemCuda, schemas.engineSystemCuda, () => detectSystemCuda())
+
   handle(Ipc.engineInstallRemote, schemas.engineInstallRemote, async ({ hostId }) => {
     const host = getTrainingHost(getSettings(), hostId)
     if (!host) throw new Error('主机不存在')
@@ -295,8 +297,6 @@ export function registerIpc(): void {
   handle(Ipc.mossInferDownloadState, null, () => getMossInferDownloadState())
 
   handle(Ipc.mossInferDownloadCancel, null, () => cancelMossInferDownload())
-
-  handle(Ipc.mossInferCudaLibs, null, () => installMossInferCudaLibs())
 
   handle(Ipc.notificationTest, null, () => pushTestNotification())
 
