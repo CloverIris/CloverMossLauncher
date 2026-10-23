@@ -430,7 +430,7 @@ async function pump(): Promise<void> {
       { model: opts.model, device: opts.device, mode: opts.settings.mossInferMemoryMode, tier: opts.settings.mossInferTier },
       opts.settings,
     )
-    sink.event({ type: 'hello', protocol: 1, runner_version: `mossinfer-${hello?.['version'] ?? '0.2.0'}` })
+    sink.event({ type: 'hello', protocol: 1, runner_version: `mossinfer-${hello?.version ?? '1.0.0'}` })
     sink.event({
       type: 'ready',
       device: `cuda:${device}`,

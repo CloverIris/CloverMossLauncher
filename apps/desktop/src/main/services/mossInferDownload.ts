@@ -131,7 +131,13 @@ async function downloadTo(
   const reader = response.body.getReader()
   try {
     while (true) {
-      const { done, value } = await reader.read()
+      // stall watchdog: a silent blob-store connection must not hang forever
+      const { done, value } = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('下载停滞（120 秒无数据），请重试')), 120_000),
+        ),
+      ])
       if (done) break
       if (controller?.signal.aborted) throw new Error('已取消下载')
       const chunk = Buffer.from(value)

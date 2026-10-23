@@ -74,7 +74,7 @@ function writePng(path, width, height) {
 const HELLO = {
   protocol_version: 1,
   server: 'fake-moss-server',
-  version: '0.2.0',
+  version: '1.0.0',
   abi_version: 1,
   capabilities: {
     preview: false,
@@ -86,6 +86,7 @@ const HELLO = {
     image_input: false,
     hires: false,
     distill: false,
+    system_cuda: true,
   },
   probe: {
     driver_cuda_version: 13040,
@@ -96,6 +97,7 @@ const HELLO = {
     build_flavour: 'cu13',
     recommended_flavour: 'cu13',
     message: 'fake',
+    cublaslt: { source: 'bundled', version: 130800, path: '/fake/libcublasLt.so.13', error: '' },
   },
 }
 

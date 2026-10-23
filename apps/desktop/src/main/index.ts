@@ -2,7 +2,7 @@ import { app, dialog, nativeTheme, protocol } from 'electron'
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runModelManagementTests } from './modelManagement.test'
 import { runModelManagementUi } from './modelManagementUi.test'
@@ -1032,29 +1032,22 @@ app.whenReady().then(async () => {
   if (scenario === 'mossinfer-download') {
     try {
       const { downloadMossInfer } = await import('./services/mossInferDownload')
-      // stable: no release exists yet upstream — expect a clean query error, not a crash.
+      // stable: the v1.0.0 release exists upstream — full chain (21 MB system-cuda
+      // archive, CUDA-libs decision, sha256 vs SHA256SUMS).
       const stable = await downloadMossInfer('stable')
-      const stableOk = stable.phase === 'error' && /HTTP 404|资产|release/i.test(stable.error ?? '')
-      // dev: default variant is settings.mossInferVariant = 'system-cuda' (no bundled cuBLASLt).
-      const dev = await downloadMossInfer('dev')
-      const serverPath = dev.serverPath ?? getSettings().mossInferServerPath ?? ''
-      const installDir = serverPath ? dirname(dirname(serverPath)) : ''
-      const cublasPresent =
-        !!installDir &&
-        existsSync(join(installDir, 'lib')) &&
-        readdirSync(join(installDir, 'lib')).some((name) => name.startsWith('libcublasLt.so'))
-      const devOk =
-        dev.phase === 'done' &&
-        !!serverPath &&
-        existsSync(serverPath) &&
-        (dev.recommendedFlavour ?? '') !== '' &&
-        cublasPresent
-      // Full chain: run a real generation with the freshly downloaded system-cuda engine
-      // (proves the pip-installed CUDA libraries satisfy the engine's dlopen shim).
+      const stablePath = stable.serverPath ?? ''
+      const stableCublas = (stable.cublaslt ?? null) as { source?: string } | null
+      const stableOk =
+        stable.phase === 'done' &&
+        !!stablePath &&
+        existsSync(stablePath) &&
+        stable.variant === 'system-cuda' &&
+        (stableCublas?.source === 'system' || stableCublas?.source === 'bundled')
+      // Full chain: run a real generation with the stable engine.
       let generation: Record<string, unknown> | null = null
       const realModelDir = '/workspace/Models/MOSS-Image/sft'
-      if (devOk && existsSync(join(realModelDir, 'model_index.json'))) {
-        const instanceId = setupMossInferScenario(serverPath, realModelDir)
+      if (stableOk && existsSync(join(realModelDir, 'model_index.json'))) {
+        const instanceId = setupMossInferScenario(stablePath, realModelDir)
         const job = await startJob({
           instanceId,
           prompt: 'a red apple on a wooden table',
@@ -1076,28 +1069,34 @@ app.whenReady().then(async () => {
         }
       }
       const genOk = generation ? generation['state'] === 'succeeded' && generation['outputExists'] === true : null
+      // dev: latest successful ci run artifact (token-gated); install only, no second generation.
+      const dev = await downloadMossInfer('dev')
+      const devPath = dev.serverPath ?? ''
+      const devOk = dev.phase === 'done' && !!devPath && existsSync(devPath)
       console.log(
         JSON.stringify(
           {
             scenario: 'mossinfer-download',
-            stable: { phase: stable.phase, error: stable.error, ok: stableOk },
-            dev: {
-              phase: dev.phase,
-              version: dev.version,
-              serverPath,
-              recommendedFlavour: dev.recommendedFlavour,
-              cublasPresent,
-              error: dev.error,
-              ok: devOk,
+            stable: {
+              phase: stable.phase,
+              version: stable.version,
+              serverPath: stablePath,
+              variant: stable.variant,
+              cublaslt: stable.cublaslt,
+              recommendedFlavour: stable.recommendedFlavour,
+              note: stable.note,
+              error: stable.error,
+              ok: stableOk,
             },
             generation,
             genOk,
+            dev: { phase: dev.phase, version: dev.version, variant: dev.variant, note: dev.note, error: dev.error, ok: devOk },
           },
           null,
           2,
         ),
       )
-      app.exit(stableOk && devOk && genOk !== false ? 0 : 1)
+      app.exit(stableOk && genOk !== false && devOk ? 0 : 1)
     } catch (error) {
       console.error(error)
       app.exit(1)
