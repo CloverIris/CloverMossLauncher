@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { GbcGraph, GbcRunInput, GbcRunResult, GbcVertex } from '@shared/gbc'
@@ -11,6 +11,28 @@ import { getSettings } from './settings'
 
 function detectorModel(detector: GbcRunInput['detector']): string {
   return detector === 'sam3' ? 'facebook/sam3' : 'google/owlv2-base-patch16-ensemble'
+}
+
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp'])
+function isImage(path: string): boolean {
+  return IMAGE_EXT.has(path.slice(path.lastIndexOf('.')).toLowerCase())
+}
+
+export async function listGbcImages(folder: string): Promise<{ path: string; images: Array<{ path: string; name: string }> }> {
+  if (!folder.trim() || !existsSync(folder)) throw new Error('图片目录不存在')
+  const files: string[] = []
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (depth > 8) return
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) await walk(path, depth + 1)
+      else if (entry.isFile() && isImage(path)) files.push(path)
+    }
+  }
+  await walk(folder, 0)
+  files.sort((a, b) => a.localeCompare(b))
+  return { path: folder, images: files.map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? path })) }
 }
 
 export interface GbcCheck {

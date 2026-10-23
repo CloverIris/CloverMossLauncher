@@ -18,7 +18,7 @@ import type { GbcImageResult, GbcRunResult } from '@shared/gbc'
 import type { BranchInfo, CommitInfo, GbcVersion } from '@shared/types'
 import { call } from '../lib/api'
 import { cloverUrl } from '../lib/clover'
-import { Button, Field, Input, Modal, Select, Spinner, useToast } from './ui'
+import { Button, Field, Input, Modal, Select, Spinner, Switch, useToast } from './ui'
 
 interface Props {
   open: boolean
@@ -44,6 +44,8 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
   const [inputMode, setInputMode] = useState<'folder' | 'files'>('folder')
   const [folder, setFolder] = useState('')
   const [files, setFiles] = useState<string[]>([])
+  const [folderImages, setFolderImages] = useState<Array<{ path: string; name: string }>>([])
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([])
   const [detector, setDetector] = useState<'owlv2' | 'sam3'>('owlv2')
   const [sidecarJson, setSidecarJson] = useState(false)
   const [sidecarTxt, setSidecarTxt] = useState(false)
@@ -110,11 +112,22 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
     }
   }
 
+  async function scanFolder(path: string): Promise<void> {
+    if (!path.trim()) return
+    try {
+      const next = await call<{ path: string; images: Array<{ path: string; name: string }> }>(Ipc.gbcListImages, { folder: path })
+      setFolderImages(next.images)
+      setSelectedPaths(next.images.map((image) => image.path))
+      setInputMode('folder')
+      toast.push(`扫描到 ${next.images.length} 张图片`, 'info')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') }
+  }
+
   async function pickFolder(): Promise<void> {
     const path = await call<string | null>(Ipc.pickDialog, { kind: 'folder', title: '选择 GBC 图片目录' })
     if (path) {
       setFolder(path)
-      setInputMode('folder')
+      await scanFolder(path)
     }
   }
 
@@ -122,6 +135,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
     const paths = await call<string[]>(Ipc.pickImages, { title: '选择 GBC 图片（可多选）' })
     if (!paths.length) return
     setFiles((current) => [...new Set([...current, ...paths])])
+    setSelectedPaths((current) => [...new Set([...current, ...paths])])
     setInputMode('files')
   }
 
@@ -130,11 +144,8 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
       toast.push('先配置可用的 VLM Provider', 'error')
       return
     }
-    if (inputMode === 'folder' && !folder.trim()) {
-      toast.push('先选择图片目录', 'error')
-      return
-    }
-    if (inputMode === 'files' && !files.length) {
+    const chosen = selectedPaths.filter((path) => (inputMode === 'folder' ? folderImages.some((image) => image.path === path) : files.includes(path)))
+    if (!chosen.length) {
       toast.push('先选择至少一张图片', 'error')
       return
     }
@@ -142,7 +153,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
     setResult(null)
     try {
       const next = await call<GbcRunResult>(Ipc.gbcRun, {
-        ...(inputMode === 'folder' ? { folder: folder.trim() } : { files }),
+        ...(inputMode === 'folder' && chosen.length === folderImages.length ? { folder: folder.trim() } : { files: chosen }),
         providerId,
         detector,
         versionId: versionId || undefined,
@@ -244,7 +255,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
       onClose={onClose}
       title="GBC 图像解析"
       description="GBC 是执行层：解析图片为 bbox/描述图；结果先进入暂存区，再按需写入画布。"
-      width="max-w-5xl"
+      width="max-w-[1180px]"
       footer={
         tab !== 'run' ? (
           <Button tone="secondary" onClick={onClose}>关闭</Button>
@@ -320,12 +331,12 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
           {envOutput ? <pre className="max-h-48 overflow-auto rounded bg-black/30 p-2 font-mono text-[8.5px] text-[var(--color-text-secondary)]">{envOutput}</pre> : null}
         </div>
       ) : result ? (
-        <div className="grid min-h-[420px] grid-cols-1 md:grid-cols-[230px_1fr]">
+        <div className="grid min-h-[560px] grid-cols-1 md:grid-cols-[230px_1fr]">
           <div className="border-b border-[var(--color-border-subtle)] md:border-b-0 md:border-r">
             <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-2 text-[10px] text-[var(--color-text-tertiary)]">
               <span>解析结果</span><span>{result.images.length} 张</span>
             </div>
-            <div className="max-h-[430px] overflow-y-auto p-1.5">
+            <div className="max-h-[560px] overflow-y-auto p-1.5">
               {result.images.map((image) => (
                 <button key={image.key} type="button" onClick={() => setSelectedKey(image.key)} className={`mb-1 w-full rounded border px-2 py-2 text-left ${selected?.key === image.key ? 'border-accent-500/40 bg-accent-500/10' : 'border-transparent hover:bg-white/[0.04]'}`}>
                   <div className="truncate text-[10.5px] font-medium">{image.name}</div>
@@ -343,7 +354,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
                 </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_220px]">
                   <div className="relative overflow-hidden rounded border border-[var(--color-border-subtle)] bg-black/25">
-                    <img src={cloverUrl(selected.path)} alt={selected.name} className="block max-h-[300px] w-full object-contain" />
+                    <img src={cloverUrl(selected.path)} alt={selected.name} className="block max-h-[420px] w-full object-contain" />
                     <div className="pointer-events-none absolute inset-0">
                       {selected.vertices.filter((vertex) => vertex.bbox).map((vertex, index) => {
                         const box = vertex.bbox!
@@ -351,7 +362,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
                       })}
                     </div>
                   </div>
-                  <div className="max-h-[300px] overflow-y-auto rounded border border-[var(--color-border-subtle)] p-2">
+                  <div className="max-h-[420px] overflow-y-auto rounded border border-[var(--color-border-subtle)] p-2">
                     {selected.vertices.map((vertex, index) => (
                       <div key={vertex.vertex_id ?? index} className="border-b border-[var(--color-border-subtle)] py-1.5 last:border-0">
                         <div className="text-[9px] font-medium text-accent-300">{index + 1}. {vertex.label ?? 'object'}</div>
@@ -366,7 +377,7 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
           </div>
         </div>
       ) : (
-        <div className="space-y-3 p-4">
+        <div className="min-h-[560px] space-y-3 p-4">
           {!status?.available ? (
             <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-[10.5px] leading-5 text-amber-200">
               {status?.error ?? '正在检查 gbc…'}
@@ -374,28 +385,39 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
             </div>
           ) : <div className="text-[9.5px] text-emerald-300">GBC 可用；首次运行可能下载 OWLv2/EmbeddingGemma 模型。</div>}
 
-          <div className="flex gap-1">
-            <button type="button" onClick={() => setInputMode('folder')} className={`rounded px-2.5 py-1 text-[10px] ${inputMode === 'folder' ? 'bg-accent-500/15 text-accent-200' : 'text-[var(--color-text-tertiary)]'}`}>图片目录</button>
-            <button type="button" onClick={() => setInputMode('files')} className={`rounded px-2.5 py-1 text-[10px] ${inputMode === 'files' ? 'bg-accent-500/15 text-accent-200' : 'text-[var(--color-text-tertiary)]'}`}>单图 / 多图</button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-1 rounded-[5px] border border-[var(--color-border-subtle)] p-0.5">
+              <button type="button" onClick={() => setInputMode('folder')} className={`rounded px-2.5 py-1 text-[10px] ${inputMode === 'folder' ? 'bg-accent-500/15 text-accent-200' : 'text-[var(--color-text-tertiary)]'}`}>图片目录</button>
+              <button type="button" onClick={() => { setInputMode('files'); setSelectedPaths(files) }} className={`rounded px-2.5 py-1 text-[10px] ${inputMode === 'files' ? 'bg-accent-500/15 text-accent-200' : 'text-[var(--color-text-tertiary)]'}`}>单图 / 多图</button>
+            </div>
+            <span className="text-[9px] text-[var(--color-text-tertiary)]">已选 {selectedPaths.length} / {inputMode === 'folder' ? folderImages.length : files.length} 张</span>
           </div>
 
-          {inputMode === 'folder' ? (
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Field label="图片目录"><Input value={folder} onChange={(event) => setFolder(event.target.value)} placeholder="/path/to/images" /></Field>
-              <Button tone="secondary" className="mt-5" onClick={() => void pickFolder()}><FolderOpen className="size-3.5" /> 选择目录</Button>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-[var(--color-border-subtle)] p-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] text-[var(--color-text-secondary)]">已选 {files.length} 张图片</span>
-                <Button tone="secondary" onClick={() => void pickFiles()}><ImagePlus className="size-3.5" /> 添加图片</Button>
+          <div className="rounded-lg border border-[var(--color-border-subtle)] bg-black/10 p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                <Input value={inputMode === 'folder' ? folder : ''} onChange={(event) => setFolder(event.target.value)} placeholder="图片目录，或直接添加图片…" className="h-7 min-w-0 flex-1 font-mono text-[9px]" />
+                {inputMode === 'folder' ? <Button tone="ghost" onClick={() => void scanFolder(folder)}>扫描</Button> : null}
               </div>
-              <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
-                {files.map((path) => <div key={path} className="flex items-center gap-2 rounded bg-white/[0.03] px-2 py-1 text-[9px]"><span className="min-w-0 flex-1 truncate font-mono">{path}</span><button type="button" onClick={() => setFiles((current) => current.filter((item) => item !== path))}><X className="size-3" /></button></div>)}
-                {files.length === 0 ? <p className="py-4 text-center text-[9.5px] text-[var(--color-text-tertiary)]">选择单张或批量图片</p> : null}
+              <div className="flex gap-1">
+                <Button tone="secondary" onClick={() => inputMode === 'folder' ? void pickFolder() : void pickFiles()}>{inputMode === 'folder' ? <><FolderOpen className="size-3.5" />选择目录</> : <><ImagePlus className="size-3.5" />添加图片</>}</Button>
+                {inputMode === 'files' ? <Button tone="ghost" onClick={() => setFiles([])}>清空</Button> : null}
               </div>
             </div>
-          )}
+            <div className="mt-2 grid max-h-[250px] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5 lg:grid-cols-6">
+              {(inputMode === 'folder' ? folderImages : files.map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? path }))).map((image) => {
+                const checked = selectedPaths.includes(image.path)
+                return (
+                  <button key={image.path} type="button" onClick={() => setSelectedPaths((current) => checked ? current.filter((path) => path !== image.path) : [...current, image.path])} className={`group relative aspect-square overflow-hidden rounded border text-left ${checked ? 'border-accent-400 ring-1 ring-accent-400/40' : 'border-[var(--color-border-subtle)] opacity-60 hover:opacity-100'}`}>
+                    <img src={cloverUrl(image.path)} alt={image.name} loading="lazy" className="size-full object-cover" />
+                    <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1.5 py-1 text-[8px] text-white/85">{image.name}</span>
+                    <span className={`absolute right-1 top-1 flex size-4 items-center justify-center rounded border text-[9px] ${checked ? 'border-accent-300 bg-accent-500 text-white' : 'border-white/40 bg-black/35 text-transparent'}`}>✓</span>
+                  </button>
+                )
+              })}
+              {(inputMode === 'folder' ? folderImages.length : files.length) === 0 ? <div className="col-span-full py-10 text-center text-[10px] text-[var(--color-text-tertiary)]">选择目录或添加图片后，这里直接显示缩略图</div> : null}
+            </div>
+          </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
             <Field label="GBC 版本"><Select value={versionId} onChange={(event) => setVersionId(event.target.value)}><option value="">外部 gbc / PATH</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name} · {version.shortCommit}</option>)}</Select></Field>
@@ -403,13 +425,14 @@ export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: 
             <Field label="VLM Provider"><Select value={providerId} onChange={(event) => setProviderId(event.target.value)}>{providers.length === 0 ? <option value="">先配置 OpenAI/Anthropic Provider</option> : null}{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name} · {provider.model}</option>)}</Select></Field>
           </div>
 
-          <div className="rounded-lg border border-[var(--color-border-subtle)] p-2.5">
-            <div className="text-[10px] font-medium">同目录输出</div>
-            <div className="mt-1 flex flex-wrap gap-4 text-[9.5px] text-[var(--color-text-secondary)]">
-              <label className="flex items-center gap-1.5"><input type="checkbox" checked={sidecarJson} onChange={(event) => setSidecarJson(event.target.checked)} className="accent-[var(--color-accent)]" /> image.gbcout.json</label>
-              <label className="flex items-center gap-1.5"><input type="checkbox" checked={sidecarTxt} onChange={(event) => setSidecarTxt(event.target.checked)} className="accent-[var(--color-accent)]" /> image.gbcout.txt</label>
+          <div className="rounded-lg border border-[var(--color-border-subtle)] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><div className="text-[10px] font-medium">同目录结果文件</div><p className="mt-0.5 text-[8.5px] text-[var(--color-text-tertiary)]">在原图旁写出结果，不修改原图。</p></div>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-[9.5px] text-[var(--color-text-secondary)]"><Switch aria-label="写出 JSON" checked={sidecarJson} onCheckedChange={setSidecarJson} />image.gbcout.json</label>
+                <label className="flex items-center gap-2 text-[9.5px] text-[var(--color-text-secondary)]"><Switch aria-label="写出 TXT" checked={sidecarTxt} onCheckedChange={setSidecarTxt} />image.gbcout.txt</label>
+              </div>
             </div>
-            <p className="mt-1 text-[8.5px] text-[var(--color-text-tertiary)]">默认关闭；开启后在原图旁写出完整 graph / 可读摘要，不修改原图。</p>
           </div>
 
           <p className="text-[9px] text-[var(--color-text-tertiary)]">解析结果先进入结果暂存区，不会直接改动画布。可逐张查看、复制，再写入画布。</p>

@@ -66,6 +66,7 @@ export const Ipc = {
   gbcDoctor: 'gbc:doctor',
   gbcInstallEnv: 'gbc:install-env',
   gbcRun: 'gbc:run',
+  gbcListImages: 'gbc:list-images',
   gbcBranches: 'gbc:branches',
   gbcCommits: 'gbc:commits',
   gbcVersions: 'gbc:versions',

@@ -272,6 +272,7 @@ export const schemas = {
   gbcVersionRemove: z.object({ id: z.string().min(1).max(160) }),
 
   gbcStatusQuery: z.object({ versionId: z.string().max(160).optional() }),
+  gbcListImages: z.object({ folder: z.string().min(1).max(4096) }),
   gbcInstallEnv: z.object({ versionId: z.string().min(1).max(160) }),
 
   gbcRun: z.object({
