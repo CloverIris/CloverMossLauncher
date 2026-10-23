@@ -980,7 +980,7 @@ export function StudioPage(): React.JSX.Element {
           <div className="flex size-9 shrink-0 items-center justify-center rounded-[6px] bg-accent-500/12 text-accent-300"><ScanSearch className="size-4" /></div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[12px] font-semibold">GBC 图像结构解析 <span className="rounded border border-accent-500/25 bg-accent-500/10 px-1 py-px text-[8px] font-medium text-accent-300">OPTIONAL</span></div>
-            <p className="mt-0.5 truncate text-[9.5px] text-[var(--color-text-tertiary)]">把参考图拆成带 bbox、文字和层级描述的可编辑区域，直接导入画布。</p>
+            <p className="mt-0.5 truncate text-[9.5px] text-[var(--color-text-tertiary)]">执行层负责 bbox、文字和层级描述；复杂工作流由画布/Togeari 编排。</p>
           </div>
         </div>
         <button type="button" onClick={() => { setGbcTab('run'); setGbcOpen(true) }} className="flex min-w-[150px] items-center justify-center gap-2 border-t border-[var(--color-border-subtle)] px-4 py-2 text-[11px] font-medium text-[var(--color-text)] transition hover:bg-white/[0.05] sm:border-l sm:border-t-0"><ScanSearch className="size-3.5 text-accent-300" />启动解析</button>

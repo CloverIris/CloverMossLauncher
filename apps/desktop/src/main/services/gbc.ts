@@ -13,17 +13,83 @@ function detectorModel(detector: GbcRunInput['detector']): string {
   return detector === 'sam3' ? 'facebook/sam3' : 'google/owlv2-base-patch16-ensemble'
 }
 
-export async function gbcStatus(): Promise<{ available: boolean; version?: string; error?: string }> {
-  for (const version of await listGbcVersions(getSettings()).catch(() => [])) {
-    const bundled = process.platform === 'win32' ? join(version.path, '.venv', 'Scripts', 'gbc.exe') : join(version.path, '.venv', 'bin', 'gbc')
-    if (existsSync(bundled)) return { available: true, version: `${version.name} · ${version.shortCommit}` }
-  }
-  const result = await run(process.env['CLOVER_GBC_BIN'] || 'gbc', ['--help'], { timeoutMs: 8000 })
-  if (result.code === 0) return { available: true, version: firstLine(result.stdout).slice(0, 120) }
+export interface GbcCheck {
+  id: string
+  label: string
+  ok: boolean
+  detail: string
+}
+
+export interface GbcStatus {
+  available: boolean
+  version?: string
+  error?: string
+  python?: string
+  venv?: string
+  checks: GbcCheck[]
+  versionId?: string
+}
+
+function versionBinary(version: { path: string }): string {
+  return process.platform === 'win32' ? join(version.path, '.venv', 'Scripts', 'gbc.exe') : join(version.path, '.venv', 'bin', 'gbc')
+}
+function versionPython(version: { path: string }): string {
+  return process.platform === 'win32' ? join(version.path, '.venv', 'Scripts', 'python.exe') : join(version.path, '.venv', 'bin', 'python')
+}
+
+export async function gbcStatus(versionId?: string): Promise<GbcStatus> {
+  const settings = getSettings()
+  const version = versionId ? (await listGbcVersions(settings)).find((item) => item.id === versionId) : null
+  const bundled = version ? versionBinary(version) : ''
+  const venvPython = version ? versionPython(version) : ''
+  const external = process.env['CLOVER_GBC_BIN'] || 'gbc'
+  const binary = bundled && existsSync(bundled) ? bundled : external
+  const checks: GbcCheck[] = []
+  const add = (id: string, label: string, ok: boolean, detail: string): void => { checks.push({ id, label, ok, detail }) }
+
+  add('clone', 'GBC 版本/代码', Boolean(version) || Boolean(process.env['CLOVER_GBC_BIN']), version ? version.path : '未选择克隆版本')
+  const help = await run(binary, ['--help'], { timeoutMs: 8000 })
+  add('binary', 'gbc 可执行文件', help.code === 0, help.code === 0 ? firstLine(help.stdout).slice(0, 160) : (help.stderr || help.stdout).trim().slice(-300) || `exit ${help.code}`)
+  const python = venvPython && existsSync(venvPython) ? venvPython : settings.pythonPath || 'python3'
+  const py = await run(python, ['--version'], { timeoutMs: 8000 })
+  add('python', 'Python 环境', py.code === 0, (py.stdout || py.stderr).trim() || '未找到 Python')
+  const imports = await run(python, ['-c', 'import torch, transformers, kohakugbc; print("torch", torch.__version__); print("transformers", transformers.__version__)'], { timeoutMs: 15_000 })
+  add('deps', 'torch / transformers / kohakugbc', imports.code === 0, imports.code === 0 ? imports.stdout.trim().slice(-500) : (imports.stderr || imports.stdout).trim().slice(-500) || '依赖导入失败')
+  const gpu = await run('nvidia-smi', ['-L'], { timeoutMs: 5000 })
+  add('gpu', 'NVIDIA CUDA', gpu.code === 0, gpu.code === 0 ? firstLine(gpu.stdout) : '未检测到 NVIDIA（GBC 会回退 CPU，较慢）')
+
   return {
-    available: false,
-    error: '未找到可用的 GBC。先在“GBC 版本”里克隆并安装环境，或安装 kohakugbc[torch] 并设置 CLOVER_GBC_BIN。',
+    available: help.code === 0 && imports.code === 0,
+    version: version ? `${version.name} · ${version.shortCommit}` : firstLine(help.stdout).slice(0, 120) || undefined,
+    error: help.code === 0 && imports.code === 0 ? undefined : 'GBC 尚未安装完整环境；请查看下方检查项并安装环境。',
+    python,
+    venv: version ? join(version.path, '.venv') : undefined,
+    checks,
+    versionId: version?.id,
   }
+}
+
+export async function installGbcEnv(versionId: string): Promise<{ ok: boolean; output: string; status: GbcStatus }> {
+  const settings = getSettings()
+  const version = (await listGbcVersions(settings)).find((item) => item.id === versionId)
+  if (!version) throw new Error('GBC 版本不存在')
+  const base = settings.pythonPath || (process.platform === 'win32' ? 'python' : 'python3')
+  const venv = join(version.path, '.venv')
+  const py = versionPython(version)
+  const lines: string[] = []
+  const runStep = async (command: string, args: string[], timeoutMs: number): Promise<void> => {
+    const result = await run(command, args, { cwd: version.path, timeoutMs })
+    lines.push(`$ ${command} ${args.join(' ')}`)
+    if (result.stdout) lines.push(result.stdout.trim())
+    if (result.stderr) lines.push(result.stderr.trim())
+    if (result.code !== 0) throw new Error(`安装步骤失败：${tail(result.stderr || result.stdout, 30)}`)
+  }
+  if (!existsSync(py)) await runStep(base, ['-m', 'venv', venv], 180_000)
+  await runStep(py, ['-m', 'pip', 'install', '--upgrade', 'pip'], 300_000)
+  const local = await run(py, ['-c', 'import pathlib; print(pathlib.Path("pyproject.toml").exists())'], { cwd: version.path, timeoutMs: 5000 })
+  if (local.stdout.trim() === 'True') await runStep(py, ['-m', 'pip', 'install', '-e', '.[torch]'], 30 * 60_000)
+  else await runStep(py, ['-m', 'pip', 'install', 'kohakugbc[torch]'], 30 * 60_000)
+  return { ok: true, output: lines.join('\n').slice(-12000), status: await gbcStatus(versionId) }
 }
 
 function configFor(input: GbcRunInput, provider: { kind: string; baseUrl: string; model: string }, out: string, keyEnv: string, device: string): string {
@@ -65,7 +131,7 @@ export async function runGbc(input: GbcRunInput): Promise<GbcRunResult> {
   const configPath = join(out, 'machine.py')
   await writeFile(configPath, configFor(input, provider, out, keyEnv, device), 'utf8')
   const version = input.versionId ? (await listGbcVersions(getSettings())).find((item) => item.id === input.versionId) : null
-  const bundled = version ? (process.platform === 'win32' ? join(version.path, '.venv', 'Scripts', 'gbc.exe') : join(version.path, '.venv', 'bin', 'gbc')) : ''
+  const bundled = version ? versionBinary(version) : ''
   const command = bundled && existsSync(bundled) ? bundled : process.env['CLOVER_GBC_BIN'] || 'gbc'
   const result = await run(command, ['run', configPath], {
     cwd: version?.path ?? out,

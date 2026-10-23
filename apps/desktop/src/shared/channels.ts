@@ -63,6 +63,8 @@ export const Ipc = {
   aiConversationRemove: 'ai:conversation-remove',
   aiChat: 'ai:chat',
   gbcStatus: 'gbc:status',
+  gbcDoctor: 'gbc:doctor',
+  gbcInstallEnv: 'gbc:install-env',
   gbcRun: 'gbc:run',
   gbcBranches: 'gbc:branches',
   gbcCommits: 'gbc:commits',

@@ -271,6 +271,9 @@ export const schemas = {
   gbcVersionCreate: z.object({ branch: z.string().min(1).max(200), commit: z.string().min(7).max(64), name: z.string().max(120).optional() }),
   gbcVersionRemove: z.object({ id: z.string().min(1).max(160) }),
 
+  gbcStatusQuery: z.object({ versionId: z.string().max(160).optional() }),
+  gbcInstallEnv: z.object({ versionId: z.string().min(1).max(160) }),
+
   gbcRun: z.object({
     folder: z.string().min(1).max(4096),
     providerId: z.string().min(1).max(120),

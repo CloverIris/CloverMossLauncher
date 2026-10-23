@@ -20,7 +20,7 @@ import {
 } from './services/mossInferDownload'
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
-import { gbcStatus, runGbc } from './services/gbc'
+import { gbcStatus, installGbcEnv, runGbc } from './services/gbc'
 import { createGbcVersion, listGbcBranches, listGbcCommits, listGbcVersions, removeGbcVersion } from './services/gbcGit'
 import { closeSshTerminal, inputSshTerminal, listSshTerminals, openSshTerminal } from './services/sshSessions'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
@@ -132,7 +132,11 @@ export function registerIpc(): void {
 
   handle(Ipc.aiChat, schemas.aiChat, (input) => chat(input))
 
-  handle(Ipc.gbcStatus, null, () => gbcStatus())
+  handle(Ipc.gbcStatus, schemas.gbcStatusQuery, ({ versionId }) => gbcStatus(versionId))
+
+  handle(Ipc.gbcDoctor, schemas.gbcStatusQuery, ({ versionId }) => gbcStatus(versionId))
+
+  handle(Ipc.gbcInstallEnv, schemas.gbcInstallEnv, ({ versionId }) => installGbcEnv(versionId))
 
   handle(Ipc.gbcRun, schemas.gbcRun, (input) => runGbc(input))
 
