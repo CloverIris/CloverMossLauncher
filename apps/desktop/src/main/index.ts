@@ -1,8 +1,8 @@
 import { app, dialog, nativeTheme, protocol } from 'electron'
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runModelManagementTests } from './modelManagement.test'
 import { runModelManagementUi } from './modelManagementUi.test'
@@ -20,6 +20,7 @@ import { ensureMirror, listBranches, listCommits } from './services/git'
 import { createInstance, deleteInstance, listInstances, updateInstance } from './services/instances'
 import { installDeps, readRuntime, resolveTorchIndex, writeRemoteRuntime } from './services/runtimes'
 import { cancelJob, getJob, getJobLogs, onJobCompleted, startJob, startTrainingJob } from './services/supervisor'
+import { shutdownMossInfer } from './services/mossInfer'
 import { createTrainerVersion, listTrainerVersions, startTrainerRun } from './services/trainers'
 import { listLaunchRows, removeLaunchRow, upsertLaunchRow } from './services/launchQueue'
 import { listCases, removeCase, saveCase } from './services/cases'
@@ -55,7 +56,8 @@ if (isDev) {
   // Keep dev data inside the checkout: easier to inspect, reset and sandbox-friendly.
   app.setPath('userData', join(app.getAppPath(), '..', '..', '.dev-data'))
 }
-if (scenario?.startsWith('model-management')) app.setPath('userData', join(tmpdir(), `clover-model-management-${process.pid}`))
+if (scenario?.startsWith('model-management') || scenario?.startsWith('mossinfer'))
+  app.setPath('userData', join(tmpdir(), `clover-${scenario.replace(/[^a-z-]/g, '')}-${process.pid}`))
 app.setName('MossStudio')
 if (process.platform === 'win32') app.setAppUserModelId('com.mossstudio.app')
 nativeTheme.themeSource = 'dark'
@@ -733,6 +735,385 @@ app.whenReady().then(async () => {
     return
   }
 
+  // --- MossInfer sidecar scenarios -------------------------------------
+  // Hermetic setup: fabricated instance record + fabricated (or symlinked)
+  // default-model HF cache; no git mirror, python runtime or network needed.
+  const setupMossInferScenario = (serverPath: string, realModelDir: string | null): string => {
+    updateSettings({ inferenceBackend: 'mossinfer', mossInferServerPath: serverPath })
+    const instanceId = 'mossinfer-test'
+    const dir = paths.instance(instanceId)
+    mkdirSync(join(dir, 'outputs'), { recursive: true })
+    writeFileSync(join(dir, 'pyproject.toml'), '# mossinfer scenario stub\n', 'utf8')
+    writeFileSync(
+      join(dir, 'instance.json'),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          id: instanceId,
+          name: 'MossInfer Test',
+          source: 'scenario',
+          branch: 'main',
+          commit: '0'.repeat(40),
+          shortCommit: '0000000',
+          commitDate: new Date().toISOString(),
+          subject: 'scenario',
+          author: 'scenario',
+          channel: 'custom',
+          runtimeId: 'mossinfer-none',
+          runtimeMode: 'isolated',
+          placement: { kind: 'local' },
+          models: [],
+          adapters: [],
+          createdAt: new Date().toISOString(),
+          lastUsedAt: null,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    const sha = 'a'.repeat(40)
+    const cacheDir = join(paths.hub(getSettings().modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT')
+    mkdirSync(join(cacheDir, 'refs'), { recursive: true })
+    writeFileSync(join(cacheDir, 'refs', 'main'), sha, 'utf8')
+    const snapshot = join(cacheDir, 'snapshots', sha)
+    mkdirSync(snapshot, { recursive: true })
+    if (realModelDir) {
+      // Real dirs + symlinked files: the readiness walk does not follow symlinked dirs.
+      const linkTree = (source: string, target: string): void => {
+        mkdirSync(target, { recursive: true })
+        for (const entry of readdirSync(source, { withFileTypes: true })) {
+          if (entry.name === '__pycache__' || entry.name === 'assets') continue
+          const from = join(source, entry.name)
+          const to = join(target, entry.name)
+          if (entry.isDirectory()) linkTree(from, to)
+          else if (!existsSync(to)) symlinkSync(from, to)
+        }
+      }
+      linkTree(realModelDir, snapshot)
+    } else {
+      // Minimal fake diffusers snapshot passing legacyModelReady/validateSnapshot.
+      writeFileSync(join(snapshot, 'model_index.json'), '{}\n', 'utf8')
+      writeFileSync(join(snapshot, 'pipeline_moss_image.py'), '# stub\n', 'utf8')
+      mkdirSync(join(snapshot, 'scheduler'), { recursive: true })
+      writeFileSync(join(snapshot, 'scheduler', 'scheduler_config.json'), '{}\n', 'utf8')
+      for (const component of ['transformer', 'text_encoder', 'vae']) {
+        mkdirSync(join(snapshot, component), { recursive: true })
+        writeFileSync(join(snapshot, component, 'config.json'), '{}\n', 'utf8')
+        writeFileSync(join(snapshot, component, 'model.safetensors'), 'x', 'utf8')
+      }
+      mkdirSync(join(snapshot, 'tokenizer'), { recursive: true })
+      writeFileSync(join(snapshot, 'tokenizer', 'tokenizer_config.json'), '{}\n', 'utf8')
+      writeFileSync(join(snapshot, 'tokenizer', 'tokenizer.json'), '{}\n', 'utf8')
+    }
+    return instanceId
+  }
+
+  const waitForJob = async (id: string, timeoutMs: number): Promise<JobRecord> => {
+    const deadline = Date.now() + timeoutMs
+    let current = (await getJob(id))!
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      current = (await getJob(id)) ?? current
+      if (current.state === 'succeeded' || current.state === 'failed' || current.state === 'canceled') break
+    }
+    return current
+  }
+
+  if (scenario === 'mossinfer-job' || scenario === 'mossinfer-cancel') {
+    try {
+      const serverPath = join(app.getAppPath(), '..', '..', 'tools', 'fake-moss-server.mjs')
+      chmodSync(serverPath, 0o755)
+      const instanceId = setupMossInferScenario(serverPath, null)
+      const cancel = scenario === 'mossinfer-cancel'
+      const startedAt = Date.now()
+      const job = await startJob({
+        instanceId,
+        prompt: cancel ? 'cancel test' : 'a red apple on a wooden table',
+        negativePrompt: '',
+        width: 256,
+        height: 256,
+        steps: cancel ? 50 : 4,
+        cfg: 3,
+        seed: 7,
+        mode: 'runner',
+      })
+      if (cancel) {
+        const progressDeadline = Date.now() + 15_000
+        let seen = await getJob(job.id)
+        while (Date.now() < progressDeadline && !(seen?.progress.current)) {
+          await new Promise((resolve) => setTimeout(resolve, 150))
+          seen = await getJob(job.id)
+        }
+        await cancelJob(job.id)
+      }
+      const current = await waitForJob(job.id, cancel ? 20_000 : 60_000)
+      const output = current.outputs?.[0]
+      const sidecar = output ? output.path.replace(/\.png$/i, '.json') : null
+      const ok = cancel
+        ? current.state === 'canceled'
+        : current.state === 'succeeded' &&
+          current.engine === 'mossinfer' &&
+          !!output &&
+          existsSync(output.path) &&
+          !!sidecar &&
+          existsSync(sidecar)
+      console.log(
+        JSON.stringify(
+          {
+            scenario,
+            state: current.state,
+            engine: current.engine,
+            progress: current.progress,
+            outputs: current.outputs,
+            sidecar,
+            error: current.error,
+            elapsedMs: Date.now() - startedAt,
+            ok,
+          },
+          null,
+          2,
+        ),
+      )
+      app.exit(ok ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (scenario === 'mossinfer-real') {
+    // Guarded real-weights end-to-end: needs MOSS_SERVER and the local MOSS-Image SFT folder.
+    const serverPath = process.env.MOSS_SERVER ?? ''
+    const realModelDir = '/workspace/Models/MOSS-Image/sft'
+    if (!serverPath || !existsSync(serverPath) || !existsSync(join(realModelDir, 'model_index.json'))) {
+      console.log(JSON.stringify({ scenario: 'mossinfer-real', skipped: true }, null, 2))
+      app.exit(0)
+      return
+    }
+    try {
+      const instanceId = setupMossInferScenario(serverPath, realModelDir)
+      const startedAt = Date.now()
+      const job = await startJob({
+        instanceId,
+        prompt: 'a red apple on a wooden table',
+        negativePrompt: '',
+        width: 256,
+        height: 256,
+        steps: 4,
+        cfg: 3,
+        seed: 7,
+        mode: 'runner',
+      })
+      const current = await waitForJob(job.id, 600_000)
+      const output = current.outputs?.[0]
+      let pngHasGenerationChunk = false
+      if (output && existsSync(output.path)) {
+        pngHasGenerationChunk = readFileSync(output.path).includes('mossinfer.generation')
+      }
+      const sidecarPath = output ? output.path.replace(/\.png$/i, '.json') : null
+      const sidecar = sidecarPath && existsSync(sidecarPath)
+        ? (JSON.parse(readFileSync(sidecarPath, 'utf8')) as Record<string, unknown>)
+        : null
+      const logs = await getJobLogs(job.id)
+      const ok =
+        current.state === 'succeeded' &&
+        current.engine === 'mossinfer' &&
+        !!output &&
+        existsSync(output.path) &&
+        pngHasGenerationChunk &&
+        sidecar?.['seed'] === 7
+      console.log(
+        JSON.stringify(
+          {
+            scenario: 'mossinfer-real',
+            state: current.state,
+            engine: current.engine,
+            stage: current.stage,
+            progress: current.progress,
+            outputs: current.outputs,
+            pngHasGenerationChunk,
+            sidecar,
+            error: current.error,
+            logLines: logs.length,
+            elapsedMs: Date.now() - startedAt,
+            ok,
+          },
+          null,
+          2,
+        ),
+      )
+      app.exit(ok ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (scenario === 'mossinfer-download') {
+    try {
+      const { downloadMossInfer } = await import('./services/mossInferDownload')
+      // stable: no release exists yet upstream — expect a clean query error, not a crash.
+      const stable = await downloadMossInfer('stable')
+      const stableOk = stable.phase === 'error' && /HTTP 404|资产|release/i.test(stable.error ?? '')
+      // dev: default variant is settings.mossInferVariant = 'system-cuda' (no bundled cuBLASLt).
+      const dev = await downloadMossInfer('dev')
+      const serverPath = dev.serverPath ?? getSettings().mossInferServerPath ?? ''
+      const installDir = serverPath ? dirname(dirname(serverPath)) : ''
+      const cublasPresent =
+        !!installDir &&
+        existsSync(join(installDir, 'lib')) &&
+        readdirSync(join(installDir, 'lib')).some((name) => name.startsWith('libcublasLt.so'))
+      const devOk =
+        dev.phase === 'done' &&
+        !!serverPath &&
+        existsSync(serverPath) &&
+        (dev.recommendedFlavour ?? '') !== '' &&
+        cublasPresent
+      // Full chain: run a real generation with the freshly downloaded system-cuda engine
+      // (proves the pip-installed CUDA libraries satisfy the engine's dlopen shim).
+      let generation: Record<string, unknown> | null = null
+      const realModelDir = '/workspace/Models/MOSS-Image/sft'
+      if (devOk && existsSync(join(realModelDir, 'model_index.json'))) {
+        const instanceId = setupMossInferScenario(serverPath, realModelDir)
+        const job = await startJob({
+          instanceId,
+          prompt: 'a red apple on a wooden table',
+          negativePrompt: '',
+          width: 256,
+          height: 256,
+          steps: 4,
+          cfg: 3,
+          seed: 7,
+          mode: 'runner',
+        })
+        const done = await waitForJob(job.id, 600_000)
+        generation = {
+          state: done.state,
+          engine: done.engine,
+          output: done.outputs?.[0]?.path ?? null,
+          outputExists: done.outputs?.[0] ? existsSync(done.outputs[0].path) : false,
+          error: done.error,
+        }
+      }
+      const genOk = generation ? generation['state'] === 'succeeded' && generation['outputExists'] === true : null
+      console.log(
+        JSON.stringify(
+          {
+            scenario: 'mossinfer-download',
+            stable: { phase: stable.phase, error: stable.error, ok: stableOk },
+            dev: {
+              phase: dev.phase,
+              version: dev.version,
+              serverPath,
+              recommendedFlavour: dev.recommendedFlavour,
+              cublasPresent,
+              error: dev.error,
+              ok: devOk,
+            },
+            generation,
+            genOk,
+          },
+          null,
+          2,
+        ),
+      )
+      app.exit(stableOk && devOk && genOk !== false ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (scenario === 'mossinfer-cuda-libs') {
+    // Verifies installCudaLibraries against a local MossInfer build's system-cuda
+    // install tree (the variant without bundled cuBLASLt). MOSSINFER_CUDA_LIBS=bundled
+    // pins the shim to the package's own lib/, isolating the pip-installed copy.
+    const buildDir = process.env.MOSSINFER_BUILD ?? '/workspace/Projects/MossInfer/build-final'
+    if (!existsSync(join(buildDir, 'CMakeCache.txt'))) {
+      console.log(JSON.stringify({ scenario: 'mossinfer-cuda-libs', skipped: true }, null, 2))
+      app.exit(0)
+      return
+    }
+    try {
+      const { probeMossInfer } = await import('./services/mossInfer')
+      const { installMossInferCudaLibs } = await import('./services/mossInferDownload')
+      const prefix = join(app.getPath('userData'), 'mossinfer-system-cuda-src')
+      rmSync(prefix, { recursive: true, force: true })
+      const install = await run('cmake', ['--install', buildDir, '--component', 'Unspecified', '--prefix', prefix], {
+        timeoutMs: 120_000,
+      })
+      if (install.code !== 0) throw new Error(`cmake --install 失败：${install.stderr.slice(0, 300)}`)
+      const serverPath = join(prefix, 'bin', 'moss-server')
+      if (!existsSync(serverPath)) throw new Error('install 树里没有 bin/moss-server')
+
+      // Negative: with an empty lib/ and policy=bundled the shim must report a load error.
+      const before = await probeMossInfer(serverPath, { MOSSINFER_CUDA_LIBS: 'bundled' })
+      const beforeCublas = (before['probe'] as Record<string, unknown> | undefined)?.['cublaslt'] as
+        | { source?: string; path?: string; error?: string }
+        | undefined
+
+      updateSettings({ mossInferServerPath: serverPath })
+      const installed = await installMossInferCudaLibs()
+
+      const after = await probeMossInfer(serverPath, { MOSSINFER_CUDA_LIBS: 'bundled' })
+      const afterCublas = (after['probe'] as Record<string, unknown> | undefined)?.['cublaslt'] as
+        | { source?: string; path?: string; error?: string }
+        | undefined
+      const libsOk =
+        !!afterCublas &&
+        !afterCublas.error &&
+        !!afterCublas.path &&
+        afterCublas.path.startsWith(prefix) &&
+        installed.installed.some((name) => name.includes('cublasLt'))
+
+      // Full chain: real generation with only the pip-installed copy visible.
+      let generation: Record<string, unknown> | null = null
+      const realModelDir = '/workspace/Models/MOSS-Image/sft'
+      if (libsOk && existsSync(join(realModelDir, 'model_index.json'))) {
+        process.env.MOSSINFER_CUDA_LIBS = 'bundled'
+        const instanceId = setupMossInferScenario(serverPath, realModelDir)
+        const job = await startJob({
+          instanceId,
+          prompt: 'a red apple on a wooden table',
+          negativePrompt: '',
+          width: 256,
+          height: 256,
+          steps: 4,
+          cfg: 3,
+          seed: 7,
+          mode: 'runner',
+        })
+        const done = await waitForJob(job.id, 600_000)
+        generation = { state: done.state, error: done.error, output: done.outputs?.[0]?.path ?? null }
+      }
+      const genOk = generation ? generation['state'] === 'succeeded' : null
+      console.log(
+        JSON.stringify(
+          {
+            scenario: 'mossinfer-cuda-libs',
+            before: beforeCublas ?? null,
+            after: afterCublas ?? null,
+            installed: installed.installed,
+            libsOk,
+            generation,
+            genOk,
+          },
+          null,
+          2,
+        ),
+      )
+      app.exit(libsOk && genOk !== false ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
   if (scenario === 'download-test') {
     try {
       const task = await downloadCustomModel('hf-internal-testing/tiny-random-gpt2', getSettings())
@@ -1372,4 +1753,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopBackend()
+  void shutdownMossInfer()
 })

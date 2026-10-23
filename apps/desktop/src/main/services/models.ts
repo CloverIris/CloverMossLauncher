@@ -179,6 +179,24 @@ export async function registerTrainedAdapter(
   }
 }
 
+/** Resolve an installed adapter's weight file (LoRA safetensors) on disk; null when missing. */
+export async function resolveAdapterFile(settings: Settings, id: string): Promise<string | null> {
+  const dir = join(paths.adapters(settings.modelsRoot), id)
+  try {
+    const raw = JSON.parse(await readFile(join(dir, 'adapter.json'), 'utf8')) as { files?: string[] }
+    const file = (raw.files ?? []).find((item) => item.endsWith('.safetensors'))
+    if (file && (await fileSize(safePath(dir, file))) > 0) return safePath(dir, file)
+  } catch {
+    // no adapter.json (e.g. locally registered adapters) — fall through to directory scan
+  }
+  try {
+    const file = (await readdir(dir)).find((name) => name.endsWith('.safetensors'))
+    return file ? join(dir, file) : null
+  } catch {
+    return null
+  }
+}
+
 async function fetchText(url: string, timeoutMs = 8000): Promise<string> {
   const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
