@@ -23,7 +23,15 @@ export function EnginePage(): React.JSX.Element {
   const [download, setDownload] = useState<MossInferDownloadState | null>(null)
   const [probe, setProbe] = useState<Record<string, unknown> | null>(null)
   const [hosts, setHosts] = useState<ManagedHost[]>([])
-  const [remote, setRemote] = useState<Record<string, { available: boolean; path: string; error?: string }>>({})
+  const [remote, setRemote] = useState<Record<string, {
+    online: boolean
+    available: boolean
+    path: string
+    root: string
+    gpu: string
+    error?: string
+    checkedAt: string
+  }>>({})
   const [remoteProgress, setRemoteProgress] = useState<Record<string, EngineRemoteProgress>>({})
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState<string | null>(null)
@@ -59,10 +67,10 @@ export function EnginePage(): React.JSX.Element {
     let cancelled = false
     void Promise.all(hosts.map(async (host) => {
       try {
-        const result = await call<{ available: boolean; path: string; error?: string }>(Ipc.engineRemoteStatus, { hostId: host.id })
+        const result = await call<{ online: boolean; available: boolean; path: string; root: string; gpu: string; error?: string; checkedAt: string }>(Ipc.engineRemoteStatus, { hostId: host.id })
         if (!cancelled) setRemote((previous) => ({ ...previous, [host.id]: result }))
       } catch (error) {
-        if (!cancelled) setRemote((previous) => ({ ...previous, [host.id]: { available: false, path: host.engineRoot ?? '~/.mossstudio/engine', error: error instanceof Error ? error.message : String(error) } }))
+        if (!cancelled) setRemote((previous) => ({ ...previous, [host.id]: { online: false, available: false, path: host.engineRoot ?? '~/.mossstudio/engine', root: host.engineRoot ?? '~/.mossstudio/engine', gpu: '', error: error instanceof Error ? error.message : String(error), checkedAt: new Date().toISOString() } }))
       }
     }))
     return () => { cancelled = true }
@@ -175,9 +183,17 @@ export function EnginePage(): React.JSX.Element {
   async function checkRemote(hostId: string): Promise<void> {
     setBusy(true)
     try {
-      const result = await call<{ available: boolean; path: string; error?: string }>(Ipc.engineRemoteStatus, { hostId })
+      const result = await call<{
+        online: boolean
+        available: boolean
+        path: string
+        root: string
+        gpu: string
+        error?: string
+        checkedAt: string
+      }>(Ipc.engineRemoteStatus, { hostId })
       setRemote((previous) => ({ ...previous, [hostId]: result }))
-      toast.push(result.available ? '远端引擎就绪' : '远端引擎缺失', result.available ? 'success' : 'info')
+      toast.push(!result.online ? 'SSH 连接失败' : result.available ? 'SSH 在线，引擎就绪' : 'SSH 在线，引擎未安装', !result.online ? 'error' : result.available ? 'success' : 'info')
     } catch (error) {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
@@ -292,7 +308,14 @@ export function EnginePage(): React.JSX.Element {
             <h2 className="text-[14px] font-semibold">远端引擎</h2>
             <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">Linux x86_64 + NVIDIA，SSH 启动同一 sidecar 协议。</p>
           </div>
-          <Pill tone="amber">远端接入中</Pill>
+          <div className="flex items-center gap-1.5">
+            <Pill tone={hosts.some((host) => remote[host.id]?.online) ? 'accent' : 'neutral'}>
+              {hosts.filter((host) => remote[host.id]?.online).length}/{hosts.length} SSH 在线
+            </Pill>
+            <Pill tone={hosts.some((host) => remote[host.id]?.available) ? 'accent' : 'amber'}>
+              {hosts.filter((host) => remote[host.id]?.available).length} 引擎就绪
+            </Pill>
+          </div>
         </div>
         {!githubToken.trim() ? (
           <div className="mt-3 rounded border border-amber-500/25 bg-amber-500/[0.05] px-2.5 py-2 text-[9.5px] leading-4 text-amber-200">
@@ -303,20 +326,46 @@ export function EnginePage(): React.JSX.Element {
           {hosts.length === 0 ? <p className="text-[10px] text-[var(--color-text-tertiary)]">还没有 SSH 主机。先在设备页添加 Linux NVIDIA 主机。</p> : null}
           {hosts.map((host) => {
             const status = remote[host.id]
+            const progress = remoteProgress[host.id]
             return (
-              <div key={host.id} className="flex items-center justify-between gap-2 rounded border border-[var(--color-border-subtle)] px-2.5 py-2 text-[10px]">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2"><HardDrive className="size-3.5 text-[var(--color-text-tertiary)]" />{host.name}<span className="text-[var(--color-text-tertiary)]">{host.user}@{host.host}</span></div>
-                  <p className="mt-0.5 truncate font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{status?.path ?? host.engineRoot ?? '~/.mossstudio/engine/bin/moss-server'}{status?.error ? ` · ${status.error}` : ''}</p>
+              <div key={host.id} className="rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-2.5">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <HardDrive className="size-3.5 text-[var(--color-text-tertiary)]" />
+                      <span className="text-[11px] font-medium">{host.name}</span>
+                      <span className="font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{host.user}@{host.host}</span>
+                      <Pill tone={status?.online ? 'accent' : 'red'}>{status ? (status.online ? 'SSH 在线' : 'SSH 离线') : '检测中'}</Pill>
+                      <Pill tone={status?.available ? 'accent' : status?.online ? 'amber' : 'neutral'}>
+                        {status?.available ? '引擎 ready' : status?.online ? '引擎 missing' : '未知'}
+                      </Pill>
+                    </div>
+                    <p className="mt-1 truncate text-[9.5px] text-[var(--color-text-secondary)]">{status?.gpu || '等待 GPU 探测'}</p>
+                    <p className="mt-0.5 truncate font-mono text-[8.5px] text-[var(--color-text-tertiary)]">
+                      {status?.path ?? host.engineRoot ?? '~/.mossstudio/engine/bin/moss-server'}
+                      {status?.checkedAt ? ` · ${dateTime(status.checkedAt)}` : ''}
+                      {status?.error ? ` · ${status.error}` : ''}
+                    </p>
+                    {host.modelPath ? <p className="mt-0.5 truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">模型：{host.modelPath}</p> : null}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                    <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
+                    <Button tone="ghost" onClick={() => void openSshTerminal(host.id)}>SSH 终端</Button>
+                    {installingRemote === host.id ? <span className="px-1 text-[8.5px] text-amber-300">安装中…</span> : <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>安装/更新</Button>}
+                    <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  {status ? <Pill tone={status.available ? 'accent' : 'red'}>{status.available ? 'ready' : 'missing'}</Pill> : null}
-                  {remoteProgress[host.id] ? <span className={`text-[8px] ${remoteProgress[host.id].phase === 'error' ? 'text-red-300' : 'text-amber-300'}`}>{remoteProgress[host.id].phase} · {remoteProgress[host.id].message}</span> : null}
-                  <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
-                  <Button tone="ghost" onClick={() => void openSshTerminal(host.id)}>SSH 终端</Button>
-                  {installingRemote === host.id ? <span className="text-[8.5px] text-amber-300">远端下载/解压中…</span> : <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>安装引擎</Button>}
-                  <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
-                </div>
+                {progress ? (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-[8.5px]">
+                      <span className={progress.phase === 'error' ? 'text-red-300' : 'text-[var(--color-text-secondary)]'}>{progress.message}</span>
+                      <span className="text-[var(--color-text-tertiary)]">{progress.percent ?? 0}%</span>
+                    </div>
+                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10">
+                      <div className={`h-full rounded-full ${progress.phase === 'error' ? 'bg-red-400' : 'bg-accent-400'} transition-all`} style={{ width: `${progress.percent ?? 0}%` }} />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )
           })}

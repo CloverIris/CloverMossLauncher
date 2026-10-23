@@ -26,11 +26,32 @@ function rootOf(host: TrainingHost): string {
   return host.engineRoot?.trim() || '~/.mossstudio/engine'
 }
 
-export async function remoteEngineStatus(host: TrainingHost): Promise<{ available: boolean; path: string; error?: string }> {
+export interface RemoteEngineStatus {
+  online: boolean
+  available: boolean
+  path: string
+  root: string
+  gpu: string
+  error?: string
+  checkedAt: string
+}
+
+export async function remoteEngineStatus(host: TrainingHost): Promise<RemoteEngineStatus> {
   const root = rootOf(host)
   const path = `${root.replace(/\/$/, '')}/bin/moss-server`
-  const result = await sshExec(host, `test -x ${posixQuote(path)} && command -v nvidia-smi >/dev/null 2>&1 && echo yes || echo no`, 20_000)
-  return { available: result.stdout.trim().endsWith('yes'), path, error: result.stderr.trim() || undefined }
+  const checkedAt = new Date().toISOString()
+  const result = await sshExec(host, [
+    'printf "__GPU__\\n"',
+    'nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || true',
+    'printf "__ENGINE__\\n"',
+    `test -x ${posixQuote(path)} && echo yes || echo no`,
+  ].join('\n'), 20_000)
+  if (result.code !== 0) {
+    return { online: false, available: false, path, root, gpu: '', error: (result.stderr || result.stdout).trim().slice(-1200), checkedAt }
+  }
+  const gpu = (result.stdout.split('__GPU__')[1]?.split('__ENGINE__')[0] ?? '').trim()
+  const engine = (result.stdout.split('__ENGINE__')[1] ?? '').trim().endsWith('yes')
+  return { online: true, available: engine, path, root, gpu, checkedAt }
 }
 
 const PHASE_TO_STAGE: Record<string, string> = {
