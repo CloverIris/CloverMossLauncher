@@ -6,6 +6,7 @@ import type { GbcGraph, GbcRunInput, GbcRunResult, GbcVertex } from '@shared/gbc
 import { paths } from '../lib/paths'
 import { firstLine, run, tail } from '../lib/run'
 import { getProviderSecret } from './ai'
+import { listGbcVersions } from './gbcGit'
 
 function detectorModel(detector: GbcRunInput['detector']): string {
   return detector === 'sam3' ? 'facebook/sam3' : 'google/owlv2-base-patch16-ensemble'
@@ -58,8 +59,11 @@ export async function runGbc(input: GbcRunInput): Promise<GbcRunResult> {
   const keyEnv = 'MOSSTUDIO_GBC_API_KEY'
   const configPath = join(out, 'machine.py')
   await writeFile(configPath, configFor(input, provider, out, keyEnv, device), 'utf8')
-  const result = await run(process.env['CLOVER_GBC_BIN'] || 'gbc', ['run', configPath], {
-    cwd: out,
+  const version = input.versionId ? (await listGbcVersions(await import('./settings').then((m) => m.getSettings()))).find((item) => item.id === input.versionId) : null
+  const bundled = version ? join(version.path, '.venv', 'bin', 'gbc') : ''
+  const command = bundled && existsSync(bundled) ? bundled : process.env['CLOVER_GBC_BIN'] || 'gbc'
+  const result = await run(command, ['run', configPath], {
+    cwd: version?.path ?? out,
     env: { [keyEnv]: provider.apiKey, PYTHONUNBUFFERED: '1' },
     timeoutMs: 30 * 60_000,
   })

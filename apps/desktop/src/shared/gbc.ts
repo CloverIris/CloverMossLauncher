@@ -24,6 +24,7 @@ export interface GbcRunInput {
   folder: string
   providerId: string
   detector: 'owlv2' | 'sam3'
+  versionId?: string
 }
 
 export interface GbcRunResult {

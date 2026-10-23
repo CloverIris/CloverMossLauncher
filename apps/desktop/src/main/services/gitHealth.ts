@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { firstLine, run } from '../lib/run'
+import { gitBinary } from '../lib/gitBinary'
 
 export interface MirrorHealth {
   healthy: boolean
@@ -18,7 +19,7 @@ export async function checkBareMirror(mirror: string): Promise<MirrorHealth> {
     return { healthy: false, branches: 0, detail: '镜像缺少 HEAD' }
   }
   const refs = await run(
-    'git',
+    gitBinary(),
     ['-C', mirror, 'for-each-ref', '--format=%(refname)', 'refs/heads'],
     { timeoutMs: 5000 },
   )
@@ -35,7 +36,7 @@ export async function checkBareMirror(mirror: string): Promise<MirrorHealth> {
     .filter(Boolean)
   for (const branch of branches) {
     const resolved = await run(
-      'git',
+      gitBinary(),
       ['-C', mirror, 'rev-parse', '--verify', `${branch}^{commit}`],
       { timeoutMs: 5000 },
     )

@@ -2,6 +2,7 @@ import {
   ArrowRight,
   Box,
   GripVertical,
+  GitBranch,
   Hand,
   Images,
   Maximize2,
@@ -272,6 +273,7 @@ export function StudioPage(): React.JSX.Element {
   const [jsonOpen, setJsonOpen] = useState(false)
   const [segmentsOpen, setSegmentsOpen] = useState(false)
   const [gbcOpen, setGbcOpen] = useState(false)
+  const [gbcTab, setGbcTab] = useState<'run' | 'manage'>('run')
   const [docks, setDocks] = useState(DEFAULT_DOCKS)
   const [leftWidth, setLeftWidth] = useState(300)
   const [rightWidth, setRightWidth] = useState(320)
@@ -973,6 +975,18 @@ export function StudioPage(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden pb-1">
 
+      <div className="glass grid shrink-0 grid-cols-1 overflow-hidden rounded-[6px] border border-[var(--color-border-subtle)] sm:grid-cols-[1fr_auto_auto]">
+        <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-[6px] bg-accent-500/12 text-accent-300"><ScanSearch className="size-4" /></div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[12px] font-semibold">GBC 图像结构解析 <span className="rounded border border-accent-500/25 bg-accent-500/10 px-1 py-px text-[8px] font-medium text-accent-300">OPTIONAL</span></div>
+            <p className="mt-0.5 truncate text-[9.5px] text-[var(--color-text-tertiary)]">把参考图拆成带 bbox、文字和层级描述的可编辑区域，直接导入画布。</p>
+          </div>
+        </div>
+        <button type="button" onClick={() => { setGbcTab('run'); setGbcOpen(true) }} className="flex min-w-[150px] items-center justify-center gap-2 border-t border-[var(--color-border-subtle)] px-4 py-2 text-[11px] font-medium text-[var(--color-text)] transition hover:bg-white/[0.05] sm:border-l sm:border-t-0"><ScanSearch className="size-3.5 text-accent-300" />启动解析</button>
+        <button type="button" onClick={() => { setGbcTab('manage'); setGbcOpen(true) }} className="flex min-w-[150px] items-center justify-center gap-2 border-t border-[var(--color-border-subtle)] px-4 py-2 text-[11px] text-[var(--color-text-secondary)] transition hover:bg-white/[0.05] sm:border-l sm:border-t-0"><GitBranch className="size-3.5" />管理 GBC 版本</button>
+      </div>
+
       <div className="flex min-h-0 flex-1 gap-0">
         {leftCollapsed ? (
           <button type="button" onClick={() => setLeftCollapsed(false)} className="flex w-6 shrink-0 items-start justify-center border-r border-[var(--color-border-subtle)] pt-2 text-[var(--color-text-tertiary)] hover:bg-white/[0.04] hover:text-[var(--color-text)]" title="展开左栏">
@@ -1066,7 +1080,7 @@ export function StudioPage(): React.JSX.Element {
           <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-2 py-1.5">
             <Segmented label="画布工具" value={tool} onChange={(value) => setTool(value as 'select' | 'draw' | 'pan')} options={[{ value: 'select', label: '选择' }, { value: 'draw', label: '画框' }, { value: 'pan', label: '手型' }]} />
             <Segmented value={label} onChange={(value) => setLabel(value as LayoutLabel)} options={[{ value: 'object', label: '物体' }, { value: 'character', label: '人物' }, { value: 'text', label: '文字' }]} />
-            <IconButton label="GBC 图像解析" onClick={() => setGbcOpen(true)}><ScanSearch className="size-3.5" /></IconButton>
+            <IconButton label="GBC 图像解析" onClick={() => { setGbcTab('run'); setGbcOpen(true) }}><ScanSearch className="size-3.5" /></IconButton>
             <IconButton label="示例布局" onClick={() => { setDraft(exampleDraft()); setSelectedId(null) }}><Sparkles className="size-3.5" /></IconButton>
             <IconButton label="清空画布" onClick={() => { setDraft(createDraft(draft.width, draft.height)); setSelectedId(null) }}><Eraser className="size-3.5" /></IconButton>
             {background ? <IconButton label="清除底图" onClick={() => setStudioBackground(null)}><X className="size-3.5" /></IconButton> : null}
@@ -1272,6 +1286,7 @@ export function StudioPage(): React.JSX.Element {
 
       <GbcImportModal
         open={gbcOpen}
+        initialTab={gbcTab}
         onClose={() => setGbcOpen(false)}
         onImport={importGbc}
       />

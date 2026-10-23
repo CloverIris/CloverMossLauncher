@@ -21,6 +21,7 @@ import {
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
+import { createGbcVersion, listGbcBranches, listGbcCommits, listGbcVersions, removeGbcVersion } from './services/gbcGit'
 import { closeSshTerminal, inputSshTerminal, listSshTerminals, openSshTerminal } from './services/sshSessions'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { detectSystemCuda } from './services/systemCuda'
@@ -134,6 +135,16 @@ export function registerIpc(): void {
   handle(Ipc.gbcStatus, null, () => gbcStatus())
 
   handle(Ipc.gbcRun, schemas.gbcRun, (input) => runGbc(input))
+
+  handle(Ipc.gbcBranches, null, () => listGbcBranches(getSettings()))
+
+  handle(Ipc.gbcCommits, schemas.gbcCommits, ({ branch, limit }) => listGbcCommits(getSettings(), branch, limit))
+
+  handle(Ipc.gbcVersions, null, () => listGbcVersions(getSettings()))
+
+  handle(Ipc.gbcVersionCreate, schemas.gbcVersionCreate, ({ branch, commit, name }) => createGbcVersion(getSettings(), branch, commit, name))
+
+  handle(Ipc.gbcVersionRemove, schemas.gbcVersionRemove, async ({ id }) => { await removeGbcVersion(getSettings(), id); return true })
 
   handle(Ipc.webAccessInfo, null, () => getWebAccessInfo())
 

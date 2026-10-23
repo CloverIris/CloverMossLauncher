@@ -134,6 +134,7 @@ export interface Settings {
   galleryRoots: string[]
   homeBackground: string | null
   trainerRoot: string | null
+  gbcRoot: string | null
   inferenceBackend: 'runner' | 'mossinfer'
   mossInferServerPath: string | null
   mossInferMemoryMode: 'min_memory' | 'balanced' | 'max_speed'
@@ -730,4 +731,16 @@ export interface ProjectSummary {
   seriesId?: string
   page?: number
   updatedAt: string
+}
+
+export interface GbcVersion {
+  id: string
+  name: string
+  branch: string
+  commit: string
+  shortCommit: string
+  subject: string
+  commitDate: string
+  path: string
+  createdAt: string
 }

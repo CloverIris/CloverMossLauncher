@@ -6,6 +6,7 @@ import { Events } from '@shared/channels'
 import { emit } from '../lib/events'
 import { paths } from '../lib/paths'
 import { firstLine, run, tail } from '../lib/run'
+import { gitBinary } from '../lib/gitBinary'
 import { applyGitMirror, getLastNetwork } from './network'
 import { checkBareMirror } from './gitHealth'
 
@@ -45,11 +46,11 @@ async function cloneMirror(settings: Settings, source = TRAINER_SOURCE): Promise
   const mirrorUrl = applyGitMirror(source, settings.gitMirror ?? getLastNetwork()?.selected.git ?? null)
   await mkdir(join(mirror, '..'), { recursive: true })
   progress(`正在克隆 ${mirrorUrl}`)
-  const result = await run('git', ['clone', '--bare', '--progress', mirrorUrl, mirror], { timeoutMs: 240_000 })
+  const result = await run(gitBinary(), ['clone', '--bare', '--progress', mirrorUrl, mirror], { timeoutMs: 240_000 })
   if (result.code === 0) return
   if (mirrorUrl !== source) {
     await rm(mirror, { recursive: true, force: true })
-    const direct = await run('git', ['clone', '--bare', '--progress', source, mirror], { timeoutMs: 240_000 })
+    const direct = await run(gitBinary(), ['clone', '--bare', '--progress', source, mirror], { timeoutMs: 240_000 })
     if (direct.code === 0) return
     throw new Error(`训练器克隆失败：${tail(direct.stderr) || firstLine(direct.stdout)}`)
   }
@@ -58,7 +59,7 @@ async function cloneMirror(settings: Settings, source = TRAINER_SOURCE): Promise
 
 async function fetchTrainerMirror(settings: Settings) {
   return run(
-    'git',
+    gitBinary(),
     ['-C', trainerMirror(settings), 'fetch', '--prune', '--tags', 'origin', '+refs/heads/*:refs/heads/*'],
     { timeoutMs: 180_000 },
   )
@@ -110,11 +111,11 @@ export async function ensureTrainerMirror(settings: Settings): Promise<void> {
 export async function listTrainerBranches(settings: Settings): Promise<BranchInfo[]> {
   await ensureTrainerMirror(settings)
   const mirror = trainerMirror(settings)
-  const result = await run('git', ['-C', mirror, 'for-each-ref', '--format=%(refname:short)|%(objectname)', 'refs/heads'], { timeoutMs: 10_000 })
+  const result = await run(gitBinary(), ['-C', mirror, 'for-each-ref', '--format=%(refname:short)|%(objectname)', 'refs/heads'], { timeoutMs: 10_000 })
   if (result.code !== 0) throw new Error(`读取训练器分支失败：${tail(result.stderr) || firstLine(result.stdout)}`)
   const branches = result.stdout.split(/\r?\n/).filter(Boolean)
   if (branches.length === 0) throw new Error('训练器镜像里没有可用分支')
-  const tag = await run('git', ['-C', mirror, 'rev-parse', '--verify', 'refs/tags/v0.1.0^{commit}'], { timeoutMs: 5000 })
+  const tag = await run(gitBinary(), ['-C', mirror, 'rev-parse', '--verify', 'refs/tags/v0.1.0^{commit}'], { timeoutMs: 5000 })
   const stable = tag.code === 0 ? firstLine(tag.stdout) : ''
   return branches
     .map((line) => {
@@ -128,7 +129,7 @@ export async function listTrainerCommits(settings: Settings, branch: string, lim
   await ensureTrainerMirror(settings)
   const safe = branch.replace(/[^A-Za-z0-9._/-]/g, '')
   const result = await run(
-    'git',
+    gitBinary(),
     ['-C', trainerMirror(settings), 'log', `-n${limit}`, '--format=%H%x1f%h%x1f%ct%x1f%s%x1f%an', safe],
     { timeoutMs: 15_000 },
   )
@@ -150,30 +151,30 @@ export async function listTrainerCommits(settings: Settings, branch: string, lim
 }
 
 export async function trainerTagSha(settings: Settings, tag = 'v0.1.0'): Promise<string | null> {
-  const result = await run('git', ['-C', trainerMirror(settings), 'rev-parse', '--verify', `refs/tags/${tag}^{commit}`], { timeoutMs: 5000 })
+  const result = await run(gitBinary(), ['-C', trainerMirror(settings), 'rev-parse', '--verify', `refs/tags/${tag}^{commit}`], { timeoutMs: 5000 })
   return result.code === 0 ? firstLine(result.stdout) || null : null
 }
 
 export async function trainerCommitExists(settings: Settings, sha: string): Promise<boolean> {
-  const result = await run('git', ['-C', trainerMirror(settings), 'cat-file', '-e', `${sha}^{commit}`], { timeoutMs: 5000 })
+  const result = await run(gitBinary(), ['-C', trainerMirror(settings), 'cat-file', '-e', `${sha}^{commit}`], { timeoutMs: 5000 })
   return result.code === 0
 }
 
 export async function createTrainerWorktree(settings: Settings, sha: string, destination: string): Promise<void> {
   await mkdir(trainerVersionsDir(settings), { recursive: true })
-  const result = await run('git', ['-C', trainerMirror(settings), 'worktree', 'add', '--detach', destination, sha], { timeoutMs: 120_000 })
+  const result = await run(gitBinary(), ['-C', trainerMirror(settings), 'worktree', 'add', '--detach', destination, sha], { timeoutMs: 120_000 })
   if (result.code !== 0) throw new Error(`创建训练版本失败：${tail(result.stderr)}`)
 }
 
 export async function removeTrainerWorktree(settings: Settings, destination: string): Promise<void> {
-  await run('git', ['-C', trainerMirror(settings), 'worktree', 'remove', '--force', destination], { timeoutMs: 30_000 })
+  await run(gitBinary(), ['-C', trainerMirror(settings), 'worktree', 'remove', '--force', destination], { timeoutMs: 30_000 })
   await rm(destination, { recursive: true, force: true })
-  await run('git', ['-C', trainerMirror(settings), 'worktree', 'prune'], { timeoutMs: 10_000 })
+  await run(gitBinary(), ['-C', trainerMirror(settings), 'worktree', 'prune'], { timeoutMs: 10_000 })
 }
 
 export async function isTrainerDirty(destination: string): Promise<boolean> {
   const result = await run(
-    'git',
+    gitBinary(),
     ['-C', destination, 'status', '--porcelain', '--', '.', ':(exclude)trainer.json', ':(exclude)runs', ':(exclude)configs/user', ':(exclude)models', ':(exclude).venv'],
     { timeoutMs: 10_000 },
   )

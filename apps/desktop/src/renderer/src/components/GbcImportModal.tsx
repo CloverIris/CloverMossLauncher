@@ -1,18 +1,20 @@
-import { FolderOpen, ScanSearch } from 'lucide-react'
+import { Download, FolderOpen, GitBranch, Layers, RefreshCw, ScanSearch, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Ipc } from '@shared/channels'
 import type { AiProviderInfo } from '@shared/ai'
 import type { GbcRunResult } from '@shared/gbc'
+import type { BranchInfo, CommitInfo, GbcVersion } from '@shared/types'
 import { call } from '../lib/api'
 import { Button, Field, Input, Modal, Select, Spinner, useToast } from './ui'
 
 interface Props {
   open: boolean
+  initialTab?: 'run' | 'manage'
   onClose: () => void
   onImport: (result: GbcRunResult) => void
 }
 
-export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.Element {
+export function GbcImportModal({ open, initialTab = 'run', onClose, onImport }: Props): React.JSX.Element {
   const toast = useToast()
   const [status, setStatus] = useState<{ available: boolean; error?: string } | null>(null)
   const [providers, setProviders] = useState<AiProviderInfo[]>([])
@@ -21,17 +23,27 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
   const [detector, setDetector] = useState<'owlv2' | 'sam3'>('owlv2')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<GbcRunResult | null>(null)
+  const [tab, setTab] = useState<'run' | 'manage'>('run')
+  const [versions, setVersions] = useState<GbcVersion[]>([])
+  const [versionId, setVersionId] = useState('')
+  const [branches, setBranches] = useState<BranchInfo[]>([])
+  const [commits, setCommits] = useState<CommitInfo[]>([])
+  const [branch, setBranch] = useState('main')
+  const [commit, setCommit] = useState('')
+  const [manageBusy, setManageBusy] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setResult(null)
+    setTab(initialTab)
+    void call<GbcVersion[]>(Ipc.gbcVersions).then((list) => { setVersions(list); setVersionId((current) => current || list[0]?.id || '') }).catch(() => undefined)
     void call<{ available: boolean; error?: string }>(Ipc.gbcStatus).then(setStatus).catch(() => setStatus({ available: false, error: '无法检测 gbc' }))
     void call<AiProviderInfo[]>(Ipc.aiProvidersList).then((list) => {
       const usable = list.filter((item) => item.hasKey && (item.kind === 'openai' || item.kind === 'anthropic'))
       setProviders(usable)
       setProviderId((current) => current || usable[0]?.id || '')
     }).catch(() => undefined)
-  }, [open])
+  }, [open, initialTab])
 
   async function pickFolder(): Promise<void> {
     const path = await call<string | null>(Ipc.pickDialog, { kind: 'folder', title: '选择 GBC 图片目录' })
@@ -46,7 +58,7 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
     setBusy(true)
     setResult(null)
     try {
-      const next = await call<GbcRunResult>(Ipc.gbcRun, { folder: folder.trim(), providerId, detector })
+      const next = await call<GbcRunResult>(Ipc.gbcRun, { folder: folder.trim(), providerId, detector, versionId: versionId || undefined })
       setResult(next)
       toast.push(`GBC 完成：${next.graphCount} 张图，${next.vertices.length} 个区域`, 'success')
     } catch (error) {
@@ -54,6 +66,50 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
     } finally {
       setBusy(false)
     }
+  }
+
+  async function pullBranches(): Promise<void> {
+    setManageBusy('branches')
+    try {
+      const list = await call<BranchInfo[]>(Ipc.gbcBranches)
+      setBranches(list)
+      const name = list.find((item) => item.isDefault)?.name ?? list[0]?.name ?? 'main'
+      setBranch(name)
+      const rows = await call<CommitInfo[]>(Ipc.gbcCommits, { branch: name, limit: 80 })
+      setCommits(rows)
+      setCommit(rows[0]?.sha ?? '')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setManageBusy(null) }
+  }
+  async function loadCommits(name: string): Promise<void> {
+    setBranch(name)
+    setManageBusy('commits')
+    try {
+      const rows = await call<CommitInfo[]>(Ipc.gbcCommits, { branch: name, limit: 80 })
+      setCommits(rows)
+      setCommit(rows[0]?.sha ?? '')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setManageBusy(null) }
+  }
+  async function createVersion(): Promise<void> {
+    if (!commit) return
+    setManageBusy('create')
+    try {
+      const version = await call<GbcVersion>(Ipc.gbcVersionCreate, { branch, commit })
+      const list = await call<GbcVersion[]>(Ipc.gbcVersions)
+      setVersions(list)
+      setVersionId(version.id)
+      toast.push(`GBC 版本已创建：${version.name}`, 'success')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setManageBusy(null) }
+  }
+  async function removeVersion(version: GbcVersion): Promise<void> {
+    if (!window.confirm(`删除 GBC 版本？\n${version.name}`)) return
+    setManageBusy(version.id)
+    try {
+      await call(Ipc.gbcVersionRemove, { id: version.id })
+      const list = await call<GbcVersion[]>(Ipc.gbcVersions)
+      setVersions(list)
+      if (versionId === version.id) setVersionId(list[0]?.id ?? '')
+      toast.push('GBC 版本已删除', 'success')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setManageBusy(null) }
   }
 
   return (
@@ -64,7 +120,7 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
       description="KohakuGBC 把图片拆成带 bbox、父子描述和关系的图；导入后会变成可编辑的画布区域。"
       width="max-w-2xl"
       footer={
-        <>
+        tab === 'manage' ? <Button tone="secondary" onClick={onClose}>关闭</Button> : <>
           <Button tone="ghost" onClick={onClose}>关闭</Button>
           {result ? (
             <Button tone="primary" onClick={() => { onImport(result); onClose() }}>导入 {result.vertices.length} 个区域</Button>
@@ -77,6 +133,34 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
         </>
       }
     >
+      <div className="flex shrink-0 gap-1 border-b border-[var(--color-border-subtle)] px-4 pt-2">
+        <button type="button" onClick={() => setTab('run')} className={`border-b-2 px-3 py-2 text-[11px] ${tab === 'run' ? 'border-accent-400 text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-tertiary)]'}`}>解析图片</button>
+        <button type="button" onClick={() => setTab('manage')} className={`border-b-2 px-3 py-2 text-[11px] ${tab === 'manage' ? 'border-accent-400 text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-tertiary)]'}`}>GBC 版本</button>
+      </div>
+      {tab === 'manage' ? (
+        <div className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.025] p-3">
+            <div><div className="flex items-center gap-1.5 text-[11.5px] font-medium"><GitBranch className="size-3.5" />KohakuGBC 版本仓库</div><p className="mt-1 text-[9.5px] text-[var(--color-text-tertiary)]">使用内嵌 Git 克隆上游，按 commit 创建独立工作目录。</p></div>
+            <Button tone="secondary" onClick={() => void pullBranches()} disabled={manageBusy !== null}>{manageBusy === 'branches' ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />}拉取/更新</Button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="分支"><Select value={branch} onChange={(event) => void loadCommits(event.target.value)}>{branches.length === 0 ? <option value="main">先拉取仓库</option> : null}{branches.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</Select></Field>
+            <Field label="提交"><Select value={commit} onChange={(event) => setCommit(event.target.value)}>{commits.length === 0 ? <option value="">先拉取仓库</option> : null}{commits.map((item) => <option key={item.sha} value={item.sha}>{item.short} · {item.subject.slice(0, 42)}</option>)}</Select></Field>
+          </div>
+          <Button tone="primary" onClick={() => void createVersion()} disabled={!commit || manageBusy !== null}>{manageBusy === 'create' ? <Spinner className="size-3.5" /> : <Download className="size-3.5" />}创建版本</Button>
+          <div className="space-y-1.5">
+            {versions.map((version) => (
+              <div key={version.id} className="flex items-center gap-2 rounded-lg border border-[var(--color-border-subtle)] px-3 py-2">
+                <Layers className="size-3.5 shrink-0 text-accent-300" />
+                <div className="min-w-0 flex-1"><div className="truncate text-[10.5px] font-medium">{version.name}</div><div className="truncate font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{version.shortCommit} · {version.path}</div></div>
+                <Button tone="ghost" onClick={() => setVersionId(version.id)}>用于解析</Button>
+                <button type="button" className="text-[var(--color-text-tertiary)] hover:text-red-300" onClick={() => void removeVersion(version)} disabled={manageBusy !== null}><Trash2 className="size-3.5" /></button>
+              </div>
+            ))}
+            {versions.length === 0 ? <p className="py-6 text-center text-[10px] text-[var(--color-text-tertiary)]">还没有 GBC 版本；先拉取上游并创建。</p> : null}
+          </div>
+        </div>
+      ) : (
       <div className="space-y-3 p-4">
         {!status?.available ? (
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-[10.5px] leading-5 text-amber-200">
@@ -94,6 +178,7 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
             <FolderOpen className="size-3.5" /> 选择
           </Button>
         </div>
+        {versions.length ? <Field label="GBC 版本"><Select value={versionId} onChange={(event) => setVersionId(event.target.value)}><option value="">外部 gbc / PATH</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name} · {version.shortCommit}</option>)}</Select></Field> : null}
         <div className="grid grid-cols-2 gap-3">
           <Field label="VLM Provider">
             <Select value={providerId} onChange={(event) => setProviderId(event.target.value)}>
@@ -130,6 +215,7 @@ export function GbcImportModal({ open, onClose, onImport }: Props): React.JSX.El
           </p>
         )}
       </div>
+      )}
     </Modal>
   )
 }

@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { gitBinary } from '../lib/gitBinary'
 import { promises as fs } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -274,7 +275,7 @@ export async function scanEnvironment(
   const [disk, pythons, git, uv, network, gpu] = await Promise.all([
     diskInfo(modelsPath),
     (report('tools', 'running'), detectPythons(settings)),
-    detectTool('git', ['--version']),
+    detectTool(gitBinary(), ['--version']),
     detectTool('uv', ['--version']),
     (report('network', 'running'), probeNetwork(settings.networkMode)),
     (report('accelerator', 'running'), detectGpu()),
