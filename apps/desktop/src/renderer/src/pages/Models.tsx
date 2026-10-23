@@ -91,6 +91,9 @@ export function ModelsPage(): React.JSX.Element {
   const [remoteRoot, setRemoteRoot] = useState('~/.mossstudio/models')
   const [remoteModelPath, setRemoteModelPath] = useState('')
   const [remoteBusy, setRemoteBusy] = useState(false)
+  const [remoteScan, setRemoteScan] = useState<{ root: string; files: number; models: Array<{ id: string; installed: boolean; path?: string }>; adapters: Array<{ id: string; installed: boolean; path?: string }> } | null>(null)
+  const [remoteScanBusy, setRemoteScanBusy] = useState(false)
+  const [remoteCategory, setRemoteCategory] = useState('all')
   const remoteHost = hosts.find((host) => host.id === remoteHostId) ?? null
   useEffect(() => { setLocalRoot(settings?.modelsRoot ?? '') }, [settings?.modelsRoot])
   useEffect(() => {
@@ -104,6 +107,7 @@ export function ModelsPage(): React.JSX.Element {
   }, [])
   useEffect(() => {
     if (!remoteHost) return
+    void scanRemote()
     setRemoteRoot(remoteHost.modelsRoot ?? '~/.mossstudio/models')
     setRemoteModelPath(remoteHost.modelPath ?? '')
   }, [remoteHost?.id])
@@ -240,6 +244,15 @@ export function ModelsPage(): React.JSX.Element {
       )
     : []
 
+  async function scanRemote(): Promise<void> {
+    if (!remoteHost) return
+    setRemoteScanBusy(true)
+    try {
+      const result = await call<{ root: string; files: number; models: Array<{ id: string; installed: boolean; path?: string }>; adapters: Array<{ id: string; installed: boolean; path?: string }> }>(Ipc.modelsRemoteInventory, { hostId: remoteHost.id, modelsRoot: remoteRoot })
+      setRemoteScan(result)
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteScanBusy(false) }
+  }
+
   async function saveRemotePaths(): Promise<void> {
     if (!remoteHost) return
     setRemoteBusy(true)
@@ -344,6 +357,34 @@ export function ModelsPage(): React.JSX.Element {
             </div>
           </div>
         )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-[13px] font-semibold">远端模型清单</h3>
+            <p className="mt-0.5 text-[9px] text-[var(--color-text-tertiary)]">{remoteScan ? `${remoteScan.root} · 扫描到 ${remoteScan.files} 个文件` : '点击扫描检查远端模型部署状态'}</p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模型…" className="h-7 w-40" />
+            <Button tone="secondary" onClick={() => void scanRemote()} disabled={remoteScanBusy}>{remoteScanBusy ? <Spinner className="size-3.5" /> : '扫描模型'}</Button>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {categories.map((item) => <button key={item.id} type="button" onClick={() => setRemoteCategory(item.id)} className={cn('rounded border px-2 py-0.5 text-[9px]', remoteCategory === item.id ? 'border-accent-500/40 bg-accent-500/10 text-accent-200' : 'border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]')}>{item.name}</button>)}
+        </div>
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {(catalog?.models ?? []).filter((model) => (remoteCategory === 'all' || model.role === remoteCategory || (remoteCategory === 'dit' && model.role === 'full')) && (!query.trim() || `${model.name} ${model.repo}`.toLowerCase().includes(query.trim().toLowerCase()))).map((model) => {
+            const scan = remoteScan?.models.find((entry) => entry.id === model.id)
+            return (
+              <div key={model.id} className="flex items-start justify-between gap-2 rounded border border-[var(--color-border-subtle)] px-2 py-1.5">
+                <div className="min-w-0"><div className="truncate text-[10px] font-medium">{model.name}</div><div className="truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">{model.repo}</div><div className="truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">{scan?.path ?? '未发现'}</div></div>
+                <Pill tone={scan?.installed ? 'accent' : 'neutral'}>{scan?.installed ? '已部署' : '缺失'}</Pill>
+              </div>
+            )
+          })}
+        </div>
+        {(catalog?.models?.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-[var(--color-text-tertiary)]">模型 catalog 尚未加载。</p> : null}
       </Card>
 
       </div>

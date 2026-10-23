@@ -171,6 +171,8 @@ export const schemas = {
   remoteResourceInspect: z.object({ hostId: z.string().min(1).max(120), kind: z.enum(['engine', 'models', 'outputs']), path: z.string().min(1).max(4096) }),
   remoteResourceRemove: z.object({ hostId: z.string().min(1).max(120), path: z.string().min(1).max(4096) }),
 
+  modelsRemoteInventory: z.object({ hostId: z.string().min(1).max(120), modelsRoot: z.string().max(4096).optional() }),
+
   hostUpdatePaths: z.object({
     id: z.string().min(1).max(120),
     engineRoot: z.string().max(4096).optional(),

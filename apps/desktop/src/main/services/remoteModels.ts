@@ -1,4 +1,4 @@
-import type { TrainingHost } from '@shared/types'
+import type { Catalog, ModelEntry, TrainingHost } from '@shared/types'
 import { posixQuote, remoteAbsolute, sshExec } from './ssh'
 
 const HF = 'https://huggingface.co'
@@ -49,4 +49,51 @@ export async function prepareRemoteDefaultModel(
   const result = await sshExec(host, script, 2 * 60 * 60_000)
   if (result.code !== 0) throw new Error(`远端模型下载失败：${(result.stderr || result.stdout).trim().slice(-1200)}`)
   return { path: target, revision: sha, files: files.length }
+}
+
+
+export interface RemoteModelInventoryEntry {
+  id: string
+  installed: boolean
+  path?: string
+}
+
+export interface RemoteModelInventory {
+  root: string
+  files: number
+  models: RemoteModelInventoryEntry[]
+  adapters: RemoteModelInventoryEntry[]
+}
+
+function modelMatches(entry: ModelEntry, files: string[]): string | undefined {
+  const repoToken = `models--${entry.repo.replace('/', '--')}`
+  const expected = entry.files?.filter(Boolean) ?? []
+  const candidates = files.filter((file) => file.includes(repoToken))
+  if (expected.length) {
+    for (const file of candidates) {
+      if (expected.some((suffix) => file.endsWith(suffix) || file.split('/').at(-1) === suffix.split('/').at(-1))) return file
+    }
+    return undefined
+  }
+  const index = candidates.find((file) => file.endsWith('/model_index.json'))
+  if (index) return index.replace(/\/model_index\.json$/, '')
+  return candidates[0]
+}
+
+export async function scanRemoteModels(host: TrainingHost, catalog: Catalog, modelsRoot?: string): Promise<RemoteModelInventory> {
+  const root = await remoteAbsolute(host, modelsRoot || host.modelsRoot || '~/.mossstudio/models')
+  const command = `test -d ${posixQuote(root)} && find ${posixQuote(root)} -maxdepth 8 -type f \\( -name '*.safetensors' -o -name '*.json' \\) -printf '%p\\n' 2>/dev/null | head -n 20000 || true`
+  const result = await sshExec(host, command, 120_000)
+  const files = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const models = catalog.models.map((entry) => {
+    const path = modelMatches(entry, files)
+    return { id: entry.id, installed: Boolean(path), path }
+  })
+  const adapters = catalog.adapters.map((entry) => {
+    const repoToken = `models--${entry.repo.replace('/', '--')}`
+    const candidates = files.filter((file) => file.includes(repoToken) || file.includes(entry.repo))
+    const path = candidates.find((file) => entry.files.some((suffix) => file.endsWith(suffix))) ?? candidates[0]
+    return { id: entry.id, installed: Boolean(path), path }
+  })
+  return { root, files: files.length, models, adapters }
 }

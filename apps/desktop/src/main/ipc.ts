@@ -25,7 +25,7 @@ import { closeSshTerminal, inputSshTerminal, listSshTerminals, openSshTerminal }
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { detectSystemCuda } from './services/systemCuda'
 import { installMossInferCudaLibs } from './services/cudaWheels'
-import { prepareRemoteDefaultModel } from './services/remoteModels'
+import { prepareRemoteDefaultModel, scanRemoteModels } from './services/remoteModels'
 import { installRemoteEngine } from './services/remoteEngineInstall'
 import { inspectRemoteResource, removeRemoteResource } from './services/remoteResources'
 import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
@@ -350,6 +350,12 @@ export function registerIpc(): void {
   })
 
   handle(Ipc.modelsCatalog, null, () => getCatalog(getSettings(), true))
+
+  handle(Ipc.modelsRemoteInventory, schemas.modelsRemoteInventory, async ({ hostId, modelsRoot }) => {
+    const host = getTrainingHost(getSettings(), hostId)
+    if (!host) throw new Error('主机不存在')
+    return scanRemoteModels(host, await getCatalog(getSettings(), true), modelsRoot)
+  })
 
   handle(Ipc.modelsImportFolder, null, async () => {
     const result = await dialog.showOpenDialog({
