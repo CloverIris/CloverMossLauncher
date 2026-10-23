@@ -94,6 +94,7 @@ export function ModelsPage(): React.JSX.Element {
   const [remoteScan, setRemoteScan] = useState<{ root: string; files: number; models: Array<{ id: string; installed: boolean; path?: string }>; adapters: Array<{ id: string; installed: boolean; path?: string }> } | null>(null)
   const [remoteScanBusy, setRemoteScanBusy] = useState(false)
   const [remoteCategory, setRemoteCategory] = useState('all')
+  const [remoteModelBusy, setRemoteModelBusy] = useState<string | null>(null)
   const remoteHost = hosts.find((host) => host.id === remoteHostId) ?? null
   useEffect(() => { setLocalRoot(settings?.modelsRoot ?? '') }, [settings?.modelsRoot])
   useEffect(() => {
@@ -253,6 +254,27 @@ export function ModelsPage(): React.JSX.Element {
     } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteScanBusy(false) }
   }
 
+  async function downloadRemoteModel(model: ModelEntry): Promise<void> {
+    if (!remoteHost) return
+    setRemoteModelBusy(model.id)
+    try {
+      await call(Ipc.hostsUpdatePaths, { id: remoteHost.id, modelsRoot: remoteRoot })
+      await call(Ipc.modelsRemoteDownload, { hostId: remoteHost.id, modelId: model.id })
+      toast.push(`远端模型已下载：${model.name}`, 'success')
+      await scanRemote()
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteModelBusy(null) }
+  }
+  async function deleteRemoteModel(model: ModelEntry, path: string): Promise<void> {
+    if (!remoteHost) return
+    if (!window.confirm(`删除远端模型文件？\n${path}`)) return
+    setRemoteModelBusy(model.id)
+    try {
+      await call(Ipc.remoteResourceRemove, { hostId: remoteHost.id, path })
+      toast.push(`远端模型已删除：${model.name}`, 'success')
+      await scanRemote()
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteModelBusy(null) }
+  }
+
   async function saveRemotePaths(): Promise<void> {
     if (!remoteHost) return
     setRemoteBusy(true)
@@ -379,7 +401,10 @@ export function ModelsPage(): React.JSX.Element {
             return (
               <div key={model.id} className="flex items-start justify-between gap-2 rounded border border-[var(--color-border-subtle)] px-2 py-1.5">
                 <div className="min-w-0"><div className="truncate text-[10px] font-medium">{model.name}</div><div className="truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">{model.repo}</div><div className="truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">{scan?.path ?? '未发现'}</div></div>
-                <Pill tone={scan?.installed ? 'accent' : 'neutral'}>{scan?.installed ? '已部署' : '缺失'}</Pill>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Pill tone={scan?.installed ? 'accent' : 'neutral'}>{scan?.installed ? '已部署' : '缺失'}</Pill>
+                  {scan?.installed && scan.path ? <Button tone="ghost" onClick={() => void deleteRemoteModel(model, scan.path!)} disabled={remoteModelBusy !== null}>删除</Button> : <Button tone="ghost" onClick={() => void downloadRemoteModel(model)} disabled={remoteModelBusy !== null || !remoteHost}>{remoteModelBusy === model.id ? <Spinner className="size-3" /> : '下载'}</Button>}
+                </div>
               </div>
             )
           })}

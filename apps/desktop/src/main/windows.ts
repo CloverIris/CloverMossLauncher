@@ -22,7 +22,6 @@ export function createAppWindow(kind: WindowKind, show = true): BrowserWindow {
     return existing
   }
 
-  const acrylic = !screenshot && (process.platform === 'darwin' || process.platform === 'win32')
   const meta = config[kind]
   const win = new BrowserWindow({
     width: meta.width,
@@ -39,18 +38,14 @@ export function createAppWindow(kind: WindowKind, show = true): BrowserWindow {
             titleBarOverlay: { color: '#00000000', symbolColor: '#e9eef7', height: 44 },
           }
         : {}),
-    ...(process.platform === 'darwin'
-      ? { vibrancy: 'under-window' as const, visualEffectState: 'active' as const }
-      : {}),
-    ...(process.platform === 'win32' ? { backgroundMaterial: 'acrylic' as const } : {}),
-    backgroundColor: acrylic ? '#00000000' : '#191b1f',
+    backgroundColor: '#191b1f',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
       additionalArguments: [
-        acrylic ? '--clover-acrylic' : '--clover-opaque',
+        '--clover-opaque',
         `--clover-window=${kind}`,
         `--clover-channel=${app.isPackaged ? 'release' : 'dev'}`,
       ],

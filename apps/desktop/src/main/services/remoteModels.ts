@@ -13,17 +13,19 @@ function safeRelative(path: string): boolean {
   return Boolean(path) && !path.startsWith('/') && !path.split('/').includes('..') && !path.includes('\0')
 }
 
-export async function prepareRemoteDefaultModel(
+async function prepareRemoteRepo(
   host: TrainingHost,
-  repo = DEFAULT_REPO,
-  revision = 'main',
+  repo: string,
+  revision: string,
+  onlyFiles?: string[],
 ): Promise<{ path: string; revision: string; files: number }> {
   const url = `${HF}/api/models/${repo}/revision/${encodeURIComponent(revision)}`
   const response = await fetch(url, { headers: { 'user-agent': 'MossStudio' }, signal: AbortSignal.timeout(30_000) })
   if (!response.ok) throw new Error(`HF API ${response.status}: ${repo}@${revision}`)
   const meta = (await response.json()) as HfRevision
   const sha = String(meta.sha ?? '')
-  const files = (meta.siblings ?? []).map((item) => String(item.rfilename ?? '')).filter(safeRelative)
+  const all = (meta.siblings ?? []).map((item) => String(item.rfilename ?? '')).filter(safeRelative)
+  const files = onlyFiles?.length ? all.filter((file) => onlyFiles.some((suffix) => file === suffix || file.endsWith(`/${suffix}`) || file.endsWith(suffix))) : all
   if (!/^[a-f0-9]{40,64}$/.test(sha) || !files.length) throw new Error('HF 没有返回有效 revision/files')
 
   const modelsRoot = await remoteAbsolute(host, host.modelsRoot || '~/.mossstudio/models')
@@ -51,6 +53,21 @@ export async function prepareRemoteDefaultModel(
   return { path: target, revision: sha, files: files.length }
 }
 
+export async function prepareRemoteDefaultModel(
+  host: TrainingHost,
+  repo = DEFAULT_REPO,
+  revision = 'main',
+): Promise<{ path: string; revision: string; files: number }> {
+  return prepareRemoteRepo(host, repo, revision)
+}
+
+export async function prepareRemoteModel(
+  host: TrainingHost,
+  model: ModelEntry,
+): Promise<{ path: string; revision: string; files: number }> {
+  return prepareRemoteRepo(host, model.repo, model.revision || 'main', model.files)
+}
+
 
 export interface RemoteModelInventoryEntry {
   id: string
@@ -71,7 +88,9 @@ function modelMatches(entry: ModelEntry, files: string[]): string | undefined {
   const candidates = files.filter((file) => file.includes(repoToken))
   if (expected.length) {
     for (const file of candidates) {
-      if (expected.some((suffix) => file.endsWith(suffix) || file.split('/').at(-1) === suffix.split('/').at(-1))) return file
+      if (!expected.some((suffix) => file.endsWith(suffix) || file.split('/').at(-1) === suffix.split('/').at(-1))) continue
+      const snapshot = file.match(/^(.*?\/snapshots\/[^/]+)/)
+      return snapshot?.[1] ?? file.slice(0, file.lastIndexOf('/'))
     }
     return undefined
   }
@@ -92,7 +111,8 @@ export async function scanRemoteModels(host: TrainingHost, catalog: Catalog, mod
   const adapters = catalog.adapters.map((entry) => {
     const repoToken = `models--${entry.repo.replace('/', '--')}`
     const candidates = files.filter((file) => file.includes(repoToken) || file.includes(entry.repo))
-    const path = candidates.find((file) => entry.files.some((suffix) => file.endsWith(suffix))) ?? candidates[0]
+    const file = candidates.find((candidate) => entry.files.some((suffix) => candidate.endsWith(suffix))) ?? candidates[0]
+    const path = file?.match(/^(.*?\/snapshots\/[^/]+)/)?.[1] ?? file?.slice(0, file.lastIndexOf('/')) ?? undefined
     return { id: entry.id, installed: Boolean(path), path }
   })
   return { root, files: files.length, models, adapters }

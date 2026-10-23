@@ -25,7 +25,7 @@ import { closeSshTerminal, inputSshTerminal, listSshTerminals, openSshTerminal }
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { detectSystemCuda } from './services/systemCuda'
 import { installMossInferCudaLibs } from './services/cudaWheels'
-import { prepareRemoteDefaultModel, scanRemoteModels } from './services/remoteModels'
+import { prepareRemoteDefaultModel, prepareRemoteModel, scanRemoteModels } from './services/remoteModels'
 import { installRemoteEngine } from './services/remoteEngineInstall'
 import { inspectRemoteResource, removeRemoteResource } from './services/remoteResources'
 import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
@@ -107,7 +107,7 @@ export function registerIpc(): void {
     arch: process.arch,
     dataPath: paths.root(),
     modelsPath: paths.models(getSettings().modelsRoot),
-    acrylic: process.platform === 'darwin' || process.platform === 'win32',
+    acrylic: false,
     backend: getBackendInfo(),
   }))
 
@@ -355,6 +355,15 @@ export function registerIpc(): void {
     const host = getTrainingHost(getSettings(), hostId)
     if (!host) throw new Error('主机不存在')
     return scanRemoteModels(host, await getCatalog(getSettings(), true), modelsRoot)
+  })
+
+  handle(Ipc.modelsRemoteDownload, schemas.modelsRemoteDownload, async ({ hostId, modelId }) => {
+    const host = getTrainingHost(getSettings(), hostId)
+    if (!host) throw new Error('主机不存在')
+    const catalog = await getCatalog(getSettings(), true)
+    const model = catalog.models.find((entry) => entry.id === modelId)
+    if (!model) throw new Error('模型不存在')
+    return prepareRemoteModel(host, model)
   })
 
   handle(Ipc.modelsImportFolder, null, async () => {

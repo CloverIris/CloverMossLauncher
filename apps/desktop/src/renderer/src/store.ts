@@ -24,7 +24,7 @@ import { call, onEvent } from './lib/api'
 
 function applyAppearance(settings: Settings): void {
   // UI v0.3 is dark-gray only. The setting stays in the schema for migration,
-  // but the shell always renders the Fluent dark acrylic surface.
+  // but the shell always renders the front-end frosted-glass surface.
   document.documentElement.dataset.theme = 'dark'
   document.documentElement.dataset.uiAnimation = settings.uiAnimation ?? 'system'
 }

@@ -19,7 +19,7 @@ module.exports = async function checkMaterials({ evaluate, webContents }) {
       const filter = await evaluate('getComputedStyle(document.querySelector("#material-probe > div")).backdropFilter')
       assert.match(filter, /blur\(/, `${name} lost its backdrop filter in compiled CSS: ${filter}`)
     }
-    await evaluate('document.querySelector("#material-probe > div").className = "glass"; void 0')
+    await evaluate('const probe = document.querySelector("#material-probe > div"); probe.className = "glass"; probe.style.background = "transparent"; void 0')
     const deviation = async () => {
       // Hidden windows can return a stale composited frame on their first capture.
       await webContents.capturePage()

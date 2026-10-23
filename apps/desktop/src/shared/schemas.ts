@@ -173,6 +173,8 @@ export const schemas = {
 
   modelsRemoteInventory: z.object({ hostId: z.string().min(1).max(120), modelsRoot: z.string().max(4096).optional() }),
 
+  modelsRemoteDownload: z.object({ hostId: z.string().min(1).max(120), modelId: z.string().min(1).max(200) }),
+
   hostUpdatePaths: z.object({
     id: z.string().min(1).max(120),
     engineRoot: z.string().max(4096).optional(),
