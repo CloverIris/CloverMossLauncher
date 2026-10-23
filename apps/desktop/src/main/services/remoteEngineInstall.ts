@@ -1,5 +1,5 @@
 import type { TrainingHost } from '@shared/types'
-import { posixQuote, sshExec } from './ssh'
+import { posixQuote, remoteAbsolute, sshExec } from './ssh'
 import { getSettings } from './settings'
 import { resolveGithubToken } from './mossInferDownload'
 
@@ -74,7 +74,7 @@ async function artifactSource(): Promise<{ version: string; url: string; name: s
 }
 
 export async function installRemoteEngine(host: TrainingHost, progress?: (phase: 'checking' | 'querying' | 'downloading' | 'extracting' | 'installing' | 'done' | 'error', message: string, percent?: number) => void): Promise<{ version: string; path: string; asset: string }> {
-  const root = (host.engineRoot || '~/.mossstudio/engine').replace(/\/$/, '')
+  const root = (await remoteAbsolute(host, host.engineRoot || '~/.mossstudio/engine')).replace(/\/$/, '')
   progress?.('checking', '检查远端 Linux/curl/tar/unzip…', 5)
   const remote = await sshExec(host, 'uname -s -m; command -v curl >/dev/null 2>&1; command -v tar >/dev/null 2>&1; command -v unzip >/dev/null 2>&1; echo READY', 20_000)
   if (!/Linux\s+x86_64/i.test(remote.stdout) || !remote.stdout.includes('READY')) {

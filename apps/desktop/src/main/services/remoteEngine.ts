@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { JobParams, TrainingHost } from '@shared/types'
 import { LineSplitter } from './parsers'
-import { posixQuote, scpFrom, sshArgs, sshCommand, sshExec, sshEnv, targetOf } from './ssh'
+import { posixQuote, remoteAbsolute, sshArgs, sshCommand, sshExec, sshEnv } from './ssh'
 
 export interface RemoteEngineSink {
   event: (payload: Record<string, unknown>) => void
@@ -37,7 +37,7 @@ export interface RemoteEngineStatus {
 }
 
 export async function remoteEngineStatus(host: TrainingHost): Promise<RemoteEngineStatus> {
-  const root = rootOf(host)
+  const root = await remoteAbsolute(host, rootOf(host)).catch(() => rootOf(host))
   const path = `${root.replace(/\/$/, '')}/bin/moss-server`
   const checkedAt = new Date().toISOString()
   const result = await sshExec(host, [
@@ -73,7 +73,7 @@ export async function runRemoteEngineJob(
   opts: RemoteEngineOptions,
   sink: RemoteEngineSink,
 ): Promise<void> {
-  const root = rootOf(host)
+  const root = await remoteAbsolute(host, rootOf(host))
   const server = `${root.replace(/\/$/, '')}/bin/moss-server`
   const remoteOutput = opts.output
   await sshExec(host, `mkdir -p ${posixQuote(dirname(remoteOutput))}`, 20_000)

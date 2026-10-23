@@ -23,6 +23,7 @@ import { getSettings } from './settings'
 import { getTrainingHost } from './trainingHosts'
 import { runRemoteEngineJob } from './remoteEngine'
 import {
+  remoteAbsolute,
   sshExec,
 } from './ssh'
 import { pushDiagnostic } from './diagnostics'
@@ -473,7 +474,8 @@ export async function startEngineJob(input: StartEngineJobInput): Promise<JobRec
     const host = getTrainingHost(settings, input.hostId)
     if (!host || host.kind !== 'ssh') throw new Error('远端引擎主机不存在')
     if (!input.remoteModelPath?.trim()) throw new Error('远端模型路径未配置')
-    const remoteOutput = `${(host.outputRoot ?? '~/.mossstudio/outputs').replace(/\/$/, '')}/${Date.now().toString(36)}-${randomUUID().slice(0, 6)}.png`
+    const outputRoot = await remoteAbsolute(host, host.outputRoot ?? '~/.mossstudio/outputs')
+    const remoteOutput = `${outputRoot.replace(/\/$/, '')}/${Date.now().toString(36)}-${randomUUID().slice(0, 6)}.png`
     const localOutput = join(paths.outputs(), `${channelSafe(host.id)}-${Date.now().toString(36)}.png`)
     const params: JobParams = {
       prompt: input.prompt,
