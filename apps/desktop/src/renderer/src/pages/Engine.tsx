@@ -19,6 +19,7 @@ export function EnginePage(): React.JSX.Element {
   const [download, setDownload] = useState<MossInferDownloadState | null>(null)
   const [probe, setProbe] = useState<Record<string, unknown> | null>(null)
   const [hosts, setHosts] = useState<ManagedHost[]>([])
+  const [remote, setRemote] = useState<Record<string, { available: boolean; path: string; error?: string }>>({})
   const [busy, setBusy] = useState(false)
   const [channel, setChannel] = useState<'stable' | 'dev'>('stable')
   const [variant, setVariant] = useState<'bundled' | 'system-cuda'>('bundled')
@@ -60,6 +61,19 @@ export function EnginePage(): React.JSX.Element {
       const result = await call<Record<string, unknown>>(Ipc.engineProbe)
       setProbe(result)
       toast.push('引擎 hello 成功', 'success')
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function checkRemote(hostId: string): Promise<void> {
+    setBusy(true)
+    try {
+      const result = await call<{ available: boolean; path: string; error?: string }>(Ipc.engineRemoteStatus, { hostId })
+      setRemote((previous) => ({ ...previous, [hostId]: result }))
+      toast.push(result.available ? '远端引擎就绪' : '远端引擎缺失', result.available ? 'success' : 'info')
     } catch (error) {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
@@ -174,12 +188,21 @@ export function EnginePage(): React.JSX.Element {
         </div>
         <div className="mt-3 space-y-1.5">
           {hosts.length === 0 ? <p className="text-[10px] text-[var(--color-text-tertiary)]">还没有 SSH 主机。先在设备页添加 Linux NVIDIA 主机。</p> : null}
-          {hosts.map((host) => (
-            <div key={host.id} className="flex items-center justify-between rounded border border-[var(--color-border-subtle)] px-2.5 py-2 text-[10px]">
-              <span className="flex items-center gap-2"><HardDrive className="size-3.5 text-[var(--color-text-tertiary)]" />{host.name}<span className="text-[var(--color-text-tertiary)]">{host.user}@{host.host}</span></span>
-              <span className="text-[var(--color-text-tertiary)]">{host.devices.length ? `${host.devices.length} GPU` : host.status}</span>
-            </div>
-          ))}
+          {hosts.map((host) => {
+            const status = remote[host.id]
+            return (
+              <div key={host.id} className="flex items-center justify-between gap-2 rounded border border-[var(--color-border-subtle)] px-2.5 py-2 text-[10px]">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2"><HardDrive className="size-3.5 text-[var(--color-text-tertiary)]" />{host.name}<span className="text-[var(--color-text-tertiary)]">{host.user}@{host.host}</span></div>
+                  <p className="mt-0.5 truncate font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{status?.path ?? host.engineRoot ?? '~/.mossstudio/engine/bin/moss-server'}{status?.error ? ` · ${status.error}` : ''}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {status ? <Pill tone={status.available ? 'accent' : 'red'}>{status.available ? 'ready' : 'missing'}</Pill> : null}
+                  <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </Card>
     </div>

@@ -820,6 +820,51 @@ app.whenReady().then(async () => {
     return current
   }
 
+  if (scenario === 'mossinfer-remote-job') {
+    try {
+      const fakeServer = join(app.getAppPath(), '..', '..', 'tools', 'fake-moss-server.mjs')
+      chmodSync(fakeServer, 0o755)
+      setupMossInferScenario(fakeServer, null)
+      const root = join(tmpdir(), `moss-remote-engine-${process.pid}`)
+      const fakeBin = join(root, 'bin')
+      const engineRoot = join(root, 'engine')
+      const outputRoot = join(root, 'outputs')
+      mkdirSync(join(engineRoot, 'bin'), { recursive: true })
+      mkdirSync(outputRoot, { recursive: true })
+      cpSync(fakeServer, join(engineRoot, 'bin', 'moss-server'))
+      chmodSync(join(engineRoot, 'bin', 'moss-server'), 0o755)
+      const fakeSsh = join(root, 'fake-ssh.sh')
+      writeFileSync(fakeSsh, `#!/bin/bash\nexport PATH="${fakeBin}:$PATH"\nfor last; do :; done\nexec bash -lc "$last"\n`, 'utf8')
+      chmodSync(fakeSsh, 0o755)
+      process.env['CLOVER_SSH_BIN'] = fakeSsh
+      const host = saveTrainingHost({
+        name: 'Fake Remote Engine', host: 'fake.local', user: 'tester',
+        trainerRoot: root, engineRoot, outputRoot,
+      })
+      const modelPath = join(paths.hub(getSettings().modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT', 'snapshots', 'a'.repeat(40))
+      const job = await startEngineJob({
+        hostId: host.id,
+        remoteModelPath: modelPath,
+        prompt: 'remote engine fake',
+        width: 256,
+        height: 256,
+        steps: 4,
+        cfg: 1,
+        seed: 11,
+        profile: 'dmd8',
+      })
+      const done = await waitForJob(job.id, 30_000)
+      console.log(JSON.stringify({ scenario: 'mossinfer-remote-job', state: done.state, hostId: done.hostId, outputs: done.outputs?.length ?? 0 }, null, 2))
+      removeTrainingHost(host.id)
+      delete process.env['CLOVER_SSH_BIN']
+      app.exit(done.state === 'succeeded' && (done.outputs?.length ?? 0) > 0 ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
   if (scenario === 'mossinfer-engine-job') {
     try {
       const serverPath = join(app.getAppPath(), '..', '..', 'tools', 'fake-moss-server.mjs')

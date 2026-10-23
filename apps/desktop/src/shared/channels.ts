@@ -103,6 +103,7 @@ export const Ipc = {
   mossInferCudaLibs: 'mossinfer:install-cuda-libs',
   engineStatus: 'engine:status',
   engineProbe: 'engine:probe',
+  engineRemoteStatus: 'engine:remote-status',
 } as const
 
 export type IpcChannel = (typeof Ipc)[keyof typeof Ipc]

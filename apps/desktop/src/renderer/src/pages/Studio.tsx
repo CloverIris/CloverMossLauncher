@@ -29,7 +29,7 @@ import {
   Unlock,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { GalleryItem, JobRecord, ProjectDocument, ProjectSummary } from '@shared/types'
+import type { GalleryItem, JobRecord, ManagedHost, ProjectDocument, ProjectSummary } from '@shared/types'
 import type { BackendInfo } from '@shared/backend'
 import { Ipc } from '@shared/channels'
 import { call } from '../lib/api'
@@ -239,6 +239,10 @@ export function StudioPage(): React.JSX.Element {
   }, [background, setStudioBackground])
   const catalog = useApp((state) => state.catalog)
   const devices = useApp((state) => state.devices)
+  const [hosts, setHosts] = useState<ManagedHost[]>([])
+  const [engineHostId, setEngineHostId] = useState('')
+  const [remoteModelPath, setRemoteModelPath] = useState('')
+  useEffect(() => { void call<ManagedHost[]>(Ipc.hostsList).then((list) => setHosts(list.filter((host) => host.kind === 'ssh'))).catch(() => undefined) }, [])
   const env = useApp((state) => state.env)
 
   const [prompt, setPrompt] = useState(storedPrompt)
@@ -704,6 +708,10 @@ export function StudioPage(): React.JSX.Element {
       toast.push('先在模型库准备一个完整模型', 'error')
       return
     }
+    if (engineHostId && !remoteModelPath.trim()) {
+      toast.push('选择远端引擎后需要填写远端模型路径', 'error')
+      return
+    }
     if (!prompt.trim()) {
       toast.push('先写提示词或插入布局 Prompt', 'error')
       return
@@ -725,6 +733,8 @@ export function StudioPage(): React.JSX.Element {
           modelBinding,
           modelName: modelBundle?.name,
           deviceId: deviceId || undefined,
+          hostId: engineHostId || undefined,
+          remoteModelPath: engineHostId ? remoteModelPath.trim() : undefined,
           prompt,
           negativePrompt: negative,
           width: draft.width,
@@ -857,6 +867,8 @@ export function StudioPage(): React.JSX.Element {
         </div>
         <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">模型</span><Select value={modelBundleId} onChange={(event) => { setModelBundleId(event.target.value); localStorage.setItem('mossstudio.modelBundleId', event.target.value) }} className="w-full">{catalog?.bundles.map((bundle) => <option key={bundle.id} value={bundle.id}>{bundle.name}</option>)}</Select></label>
         <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">设备</span><Select value={deviceId} onChange={(event) => { setDeviceId(event.target.value); localStorage.setItem('mossstudio.deviceId', event.target.value) }} className="w-full">{devices.map((device) => <option key={device.id} value={device.id}>{device.name} · {device.kind.toUpperCase()}</option>)}</Select></label>
+        <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">引擎</span><Select value={engineHostId} onChange={(event) => setEngineHostId(event.target.value)} className="w-full"><option value="">本机 MossInfer</option>{hosts.map((host) => <option key={host.id} value={host.id}>{host.name} · 远端</option>)}</Select></label>
+        {engineHostId ? <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">远端模型路径</span><Input value={remoteModelPath} onChange={(event) => setRemoteModelPath(event.target.value)} placeholder="~/.mossstudio/models/..." className="w-full" /></label> : null}
       </div>
     )
     if (id === 'summary') return (

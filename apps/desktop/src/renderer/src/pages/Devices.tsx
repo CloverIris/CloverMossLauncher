@@ -32,6 +32,8 @@ interface HostForm {
   password: string
   hasPassword: boolean
   trainerRoot: string
+  engineRoot: string
+  outputRoot: string
   instanceRoot: string
   modelsRoot: string
 }
@@ -46,6 +48,8 @@ const EMPTY_FORM: HostForm = {
   password: '',
   hasPassword: false,
   trainerRoot: '~/.mossstudio/trainer',
+  engineRoot: '~/.mossstudio/engine',
+  outputRoot: '~/.mossstudio/outputs',
   instanceRoot: '~/.mossstudio/instances',
   modelsRoot: '~/.mossstudio/models',
 }
@@ -157,6 +161,8 @@ export function DevicesPage(): React.JSX.Element {
       password: '',
       hasPassword: host.hasPassword ?? false,
       trainerRoot: host.trainerRoot,
+      engineRoot: host.engineRoot ?? '~/.mossstudio/engine',
+      outputRoot: host.outputRoot ?? '~/.mossstudio/outputs',
       instanceRoot: host.instanceRoot ?? '~/.mossstudio/instances',
       modelsRoot: host.modelsRoot ?? '~/.mossstudio/models',
     })
@@ -184,6 +190,8 @@ export function DevicesPage(): React.JSX.Element {
         identityFile: form.authMethod === 'identityFile' ? form.identityFile.trim() || undefined : undefined,
         password: form.authMethod === 'password' ? form.password || undefined : undefined,
         trainerRoot: form.trainerRoot.trim(),
+        engineRoot: form.engineRoot.trim() || undefined,
+        outputRoot: form.outputRoot.trim() || undefined,
         instanceRoot: form.instanceRoot.trim() || undefined,
         modelsRoot: form.modelsRoot.trim() || undefined,
       })
@@ -619,6 +627,20 @@ export function DevicesPage(): React.JSX.Element {
             </label>
             <label className="block">
               <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">实例根目录（推理）</span>
+              <Input
+                value={form.engineRoot}
+                onChange={(event) => setForm({ ...form, engineRoot: event.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">远端输出目录</span>
+              <Input
+                value={form.outputRoot}
+                onChange={(event) => setForm({ ...form, outputRoot: event.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">远端实例目录</span>
               <Input
                 value={form.instanceRoot}
                 onChange={(event) => setForm({ ...form, instanceRoot: event.target.value })}

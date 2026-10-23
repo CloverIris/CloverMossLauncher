@@ -25,6 +25,8 @@ import { cancelMossInferJob, resolveServerPath, restartMossInfer, runMossInferJo
 import { readRuntime, venvPython } from './runtimes'
 import { getSettings } from './settings'
 import { remoteModelReady, remoteRoots } from './remoteInstances'
+import { getTrainingHost } from './trainingHosts'
+import { runRemoteEngineJob } from './remoteEngine'
 import {
   sshExec,
 } from './ssh'
@@ -43,6 +45,10 @@ import {
 } from './parsers'
 
 const PREFIX = '@@CLOVER@@ '
+
+function channelSafe(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '-')
+}
 const DEFAULT_MODEL = 'OpenMOSS-Team/MOSS-Image-SFT'
 const MAX_LOG_LINES = 2000
 
@@ -763,29 +769,101 @@ export interface StartEngineJobInput {
   seed: number
   profile?: 'base' | 'dmd8'
   deviceId?: string
+  hostId?: string
+  remoteModelPath?: string
 }
 
 /** Generate directly through MossInfer; no Instance, repo worktree or Python runtime. */
 export async function startEngineJob(input: StartEngineJobInput): Promise<JobRecord> {
   await loadJobs()
   const settings = getSettings()
-  const serverPath = resolveServerPath(settings)
-  if (!serverPath || !existsSync(serverPath)) throw new Error('未找到 moss-server；请先在引擎页下载或配置引擎')
   if (!input.prompt.trim()) throw new Error('提示词不能为空')
 
   let modelPath: string | undefined
   let modelSnapshot: unknown
-  if (input.modelBinding) {
-    const bundlePath = await prepareModelBundle(input.modelBinding, settings)
-    modelPath = bundlePath
-    modelSnapshot = JSON.parse(await readFile(join(bundlePath, 'clover_model.json'), 'utf8'))
-  } else {
-    modelPath =
-      (await resolveLegacyModelPath(
-        join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'),
-      )) ?? undefined
+  if (!input.hostId) {
+    const serverPath = resolveServerPath(settings)
+    if (!serverPath || !existsSync(serverPath)) throw new Error('未找到 moss-server；请先在引擎页下载或配置引擎')
+    if (input.modelBinding) {
+      const bundlePath = await prepareModelBundle(input.modelBinding, settings)
+      modelPath = bundlePath
+      modelSnapshot = JSON.parse(await readFile(join(bundlePath, 'clover_model.json'), 'utf8'))
+    } else {
+      modelPath =
+        (await resolveLegacyModelPath(
+          join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'),
+        )) ?? undefined
+    }
+    if (!modelPath) throw new Error('模型权重尚未就绪，请先在模型库下载 MOSS-Image')
   }
-  if (!modelPath) throw new Error('模型权重尚未就绪，请先在模型库下载 MOSS-Image')
+
+  if (input.hostId) {
+    const host = getTrainingHost(settings, input.hostId)
+    if (!host || host.kind !== 'ssh') throw new Error('远端引擎主机不存在')
+    if (!input.remoteModelPath?.trim()) throw new Error('远端模型路径未配置')
+    const remoteOutput = `${(host.outputRoot ?? '~/.mossstudio/outputs').replace(/\/$/, '')}/${Date.now().toString(36)}-${randomUUID().slice(0, 6)}.png`
+    const localOutput = join(paths.outputs(), `${channelSafe(host.id)}-${Date.now().toString(36)}.png`)
+    const params: JobParams = {
+      prompt: input.prompt,
+      negativePrompt: input.negativePrompt ?? '',
+      width: input.width,
+      height: input.height,
+      steps: input.steps,
+      cfg: input.cfg,
+      seed: input.seed,
+      profile: input.profile ?? 'base',
+    }
+    const job: JobRecord = {
+      id: `job-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`,
+      instanceId: 'engine',
+      instanceName: input.modelName ?? host.name,
+      workspace: 'clover',
+      deviceId: input.deviceId,
+      hostId: host.id,
+      kind: 'inference',
+      mode: 'runner',
+      engine: 'mossinfer',
+      state: 'starting',
+      stage: 'idle',
+      params,
+      progress: { stage: 'idle', current: 0, total: params.steps, percent: 0 },
+      startedAt: new Date().toISOString(),
+    }
+    job.logPath = logPath(job.id)
+    jobs.set(job.id, job)
+    logs.set(job.id, [])
+    seqs.set(job.id, 0)
+    emit(Events.job, snapshot(job))
+    const readyTimer = setTimeout(() => {
+      if (job.state === 'starting') {
+        update(job, { state: 'failed', error: { code: 'E_TIMEOUT', message: '远端引擎启动超时' } })
+      }
+    }, 180_000)
+    const runningJob: RunningJob = { child: undefined, out: new LineSplitter(), err: new LineSplitter(), readyTimer, lastLines: [], cancelRequested: false }
+    running.set(job.id, runningJob)
+    void runRemoteEngineJob(
+      host,
+      {
+        engineRoot: host.engineRoot,
+        model: input.remoteModelPath,
+        output: remoteOutput,
+        localOutput,
+        params,
+        mode: settings.mossInferMemoryMode,
+        tier: settings.mossInferTier,
+        device: input.deviceId?.startsWith('cuda:') ? Number(input.deviceId.slice(5)) : undefined,
+      },
+      {
+        event: (payload) => handleRunnerEvent(job, runningJob, JSON.stringify(payload)),
+        stderr: (line) => appendLog(job, 'stderr', line, runningJob),
+        done: (code) => finish(job, runningJob, code),
+      },
+    ).catch((error: unknown) => {
+      handleRunnerEvent(job, runningJob, JSON.stringify({ type: 'error', code: 'E_REMOTE', message: String(error instanceof Error ? error.message : error), fatal: true }))
+      finish(job, runningJob, -1)
+    })
+    return snapshot(job)
+  }
 
   const params: JobParams = {
     prompt: input.prompt,
@@ -851,7 +929,7 @@ export async function startEngineJob(input: StartEngineJobInput): Promise<JobRec
   void runMossInferJob(
     job,
     params,
-    { model: modelPath, device: cudaOrdinal, loras: [], output, settings },
+    { model: modelPath!, device: cudaOrdinal, loras: [], output, settings },
     {
       event: (payload) => handleRunnerEvent(job, runningJob, JSON.stringify(payload)),
       stderr: (line) => appendLog(job, 'stderr', line, runningJob),

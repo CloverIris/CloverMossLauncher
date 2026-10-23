@@ -19,6 +19,11 @@
   - 改选模型 bundle + 设备
   - Project 记录 `modelBundleId`/`deviceId`
 - UI fixture 改为验证无实例引擎 payload
+- Linux SSH 远端 sidecar（第一版）
+  - 复用 SSH host 的 `engineRoot`/`outputRoot`
+  - SSH 启动远端 `moss-server`，JSON-lines 协议
+  - 远端生成 PNG 通过 SSH + base64 回传本地
+  - `mossinfer-remote-job` fake SSH 冒烟通过
 
 ## 下一阶段
 
@@ -26,10 +31,11 @@
 2. 删除推理 Worker：`git.ts`、`instances.ts`、`remoteInstances.ts`、`runtimes.ts` 的推理部分
 3. 删除旧 `startJob`/runner Python 路径；所有推理只走 `startEngineJob`
 4. 删除 `/api/instances`、`listInstances`、cases/launchQueue 旧数据
-5. 远端：
-   - SSH 启动 Linux sidecar
-   - 远端 HF 权重下载
-   - 远端输出 SCP 回传
+5. 远端（部分完成）：
+   - SSH 启动 Linux sidecar ✅
+   - 远端输出回传 ✅（base64，后续改 scp）
+   - 远端 HF 权重下载 ❌
+   - 远端引擎安装/解压 ❌
 6. Python/Git 检测只保留在 Trainer
 7. 旧推理数据重置/归档
 8. 真实 Windows/Linux NVIDIA 验收

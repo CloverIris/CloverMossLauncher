@@ -41,7 +41,7 @@ import {
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
-import { localEngineInfo, probeLocalEngine } from './services/engines'
+import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
 import { openWindow } from './windows'
@@ -301,6 +301,8 @@ export function registerIpc(): void {
   handle(Ipc.engineStatus, null, () => localEngineInfo())
 
   handle(Ipc.engineProbe, null, () => probeLocalEngine())
+
+  handle(Ipc.engineRemoteStatus, schemas.engineRemoteStatus, ({ hostId }) => remoteEngineInfo(hostId))
 
   handle(Ipc.mossInferDownloadState, null, () => getMossInferDownloadState())
 

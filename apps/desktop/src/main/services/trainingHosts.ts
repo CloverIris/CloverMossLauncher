@@ -58,6 +58,8 @@ export interface SaveTrainingHostInput {
   identityFile?: string
   password?: string
   trainerRoot: string
+  engineRoot?: string
+  outputRoot?: string
   instanceRoot?: string
   modelsRoot?: string
 }
@@ -84,6 +86,8 @@ export function saveTrainingHost(input: SaveTrainingHostInput): TrainingHost {
     identityFile: authMethod === 'identityFile' ? (input.identityFile ?? existing?.identityFile)?.trim() || undefined : undefined,
     hasPassword: authMethod === 'password',
     trainerRoot: input.trainerRoot.trim(),
+    engineRoot: input.engineRoot?.trim() || existing?.engineRoot,
+    outputRoot: input.outputRoot?.trim() || existing?.outputRoot,
     instanceRoot: input.instanceRoot?.trim() || undefined,
     modelsRoot: input.modelsRoot?.trim() || undefined,
     status: 'unchecked',
