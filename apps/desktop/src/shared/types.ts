@@ -134,8 +134,32 @@ export interface Settings {
   galleryRoots: string[]
   homeBackground: string | null
   trainerRoot: string | null
+  inferenceBackend: 'runner' | 'mossinfer'
+  mossInferServerPath: string | null
+  mossInferMemoryMode: 'min_memory' | 'balanced' | 'max_speed'
+  mossInferTier: 'auto' | 'reference' | 'high' | 'turbo'
+  mossInferChannel: 'stable' | 'dev'
+  mossInferVariant: 'system-cuda' | 'bundled'
+  githubToken: string | null
   disabledDevices: string[]
   deviceLabels: Record<string, string>
+}
+
+export interface MossInferDownloadState {
+  channel: 'stable' | 'dev'
+  phase: 'querying' | 'downloading' | 'verifying' | 'extracting' | 'cuda_libs' | 'done' | 'error'
+  bytes: number
+  totalBytes: number
+  percent: number
+  speedBps: number
+  version?: string
+  serverPath?: string
+  recommendedFlavour?: string
+  variant?: 'system-cuda' | 'bundled'
+  note?: string
+  cublaslt?: unknown
+  error?: string
+  updatedAt: string
 }
 
 export interface AppNotification {
@@ -538,6 +562,7 @@ export interface JobProgress {
 
 export interface JobRecord {
   modelSnapshot?: unknown
+  engine?: 'runner' | 'mossinfer'
   id: string
   instanceId: string
   instanceName: string

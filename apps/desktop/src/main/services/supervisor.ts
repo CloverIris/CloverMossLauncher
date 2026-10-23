@@ -18,7 +18,9 @@ import { emit } from '../lib/events'
 import { paths } from '../lib/paths'
 import { getInstance } from './instances'
 import { prepareModelBundle } from './modelBundles'
-import { legacyModelReady } from './modelReadiness'
+import { legacyModelReady, resolveLegacyModelPath } from './modelReadiness'
+import { resolveAdapterFile } from './models'
+import { cancelMossInferJob, resolveServerPath, restartMossInfer, runMossInferJob } from './mossInfer'
 import { readRuntime, venvPython } from './runtimes'
 import { getSettings } from './settings'
 import { remoteModelReady, remoteRoots } from './remoteInstances'
@@ -44,7 +46,7 @@ const DEFAULT_MODEL = 'OpenMOSS-Team/MOSS-Image-SFT'
 const MAX_LOG_LINES = 2000
 
 interface RunningJob {
-  child: ChildProcessWithoutNullStreams
+  child: ChildProcessWithoutNullStreams | undefined
   out: LineSplitter
   err: LineSplitter
   readyTimer: NodeJS.Timeout
@@ -457,8 +459,10 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
   const mode = input.mode ?? 'runner'
   const workspace = 'clover' as const
   const remote = instance.placement.kind === 'ssh' ? instance.placement : null
+  const settings = getSettings()
+  const useMossInfer = mode === 'runner' && !remote && settings.inferenceBackend === 'mossinfer'
   const runtime = await readRuntime(instance.runtimeId)
-  if (mode !== 'simulate' && (!runtime || runtime.state !== 'ready')) {
+  if (mode !== 'simulate' && !useMossInfer && (!runtime || runtime.state !== 'ready')) {
     pushDiagnostic({
       jobId: undefined,
       ruleId: 'E_RUNTIME',
@@ -478,14 +482,15 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
   let bundlePath: string | undefined
   let modelSnapshot: unknown
   if (mode !== 'simulate' && !remote && instance.modelBinding) {
-    bundlePath = await prepareModelBundle(instance.modelBinding, getSettings())
+    bundlePath = await prepareModelBundle(instance.modelBinding, settings)
     modelSnapshot = JSON.parse(await readFile(join(bundlePath, 'clover_model.json'), 'utf8'))
   }
 
+  let mossModelPath: string | undefined
   if (mode !== 'simulate' && !bundlePath) {
-    const modelDir = join(paths.hub(getSettings().modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT')
+    const modelDir = join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT')
     const modelAvailable = remote
-      ? await remoteModelReady(await remoteRoots(getSettings(), remote.hostId))
+      ? await remoteModelReady(await remoteRoots(settings, remote.hostId))
       : await legacyModelReady(modelDir)
     if (!modelAvailable) {
       pushDiagnostic({
@@ -504,6 +509,33 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
       throw new Error('模型权重尚未就绪，请在模型库补齐组件并在实例详情保存绑定')
     }
   }
+  if (useMossInfer) {
+    mossModelPath =
+      bundlePath ??
+      (await resolveLegacyModelPath(
+        join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'),
+      )) ??
+      undefined
+    if (!mossModelPath) {
+      // The availability check above passed, so this is unreachable in practice.
+      throw new Error('模型权重尚未就绪，请在模型库补齐组件并在实例详情保存绑定')
+    }
+    if (!resolveServerPath(settings)) {
+      pushDiagnostic({
+        jobId: undefined,
+        ruleId: 'E_ENGINE',
+        severity: 'error',
+        title: '未找到 moss-server',
+        explain: '请在设置中配置 mossInferServerPath，或设置 MOSS_SERVER 环境变量。',
+        solutions: [{ label: '打开设置', action: 'open_settings' }],
+        raw: 'moss-server not found',
+        signature: 'E_ENGINE:no-server',
+        toast: false,
+      })
+      throw new Error('未找到 moss-server 可执行文件，请在设置中配置 mossInferServerPath')
+    }
+  }
+
   const python = runtime
     ? remote
       ? runtime.python
@@ -511,8 +543,16 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
     : process.platform === 'win32'
       ? 'python'
       : 'python3'
-  if (!remote && !existsSync(python) && mode !== 'simulate') {
+  if (!useMossInfer && !remote && !existsSync(python) && mode !== 'simulate') {
     throw new Error('找不到运行时 Python，请修复运行时')
+  }
+
+  const loras: Array<{ path: string; strength: number }> = []
+  if (useMossInfer && instance.adapterBindings?.length) {
+    for (const binding of instance.adapterBindings.filter((item) => item.enabled)) {
+      const file = await resolveAdapterFile(settings, binding.id)
+      if (file) loras.push({ path: file, strength: binding.strength ?? 1 })
+    }
   }
 
   const params: JobParams = {
@@ -537,6 +577,7 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
     deviceId: input.deviceId,
     kind: input.kind ?? 'inference',
     mode,
+    ...(mode !== 'simulate' ? { engine: useMossInfer ? ('mossinfer' as const) : ('runner' as const) } : {}),
     state: 'starting',
     stage: 'idle',
     params,
@@ -579,6 +620,59 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
     ),
     'utf8',
   )
+
+  if (useMossInfer) {
+    const cudaOrdinal = input.deviceId?.startsWith('cuda:') ? Number(input.deviceId.slice(5)) : -1
+    const readyTimer = setTimeout(() => {
+      if (job.state === 'starting') {
+        pushDiagnostic({
+          jobId: job.id,
+          ruleId: 'E_TIMEOUT',
+          severity: 'error',
+          title: '启动超时',
+          explain: 'moss-server 在 180 秒内没有就绪，通常是引擎启动或模型加载失败。',
+          solutions: [{ label: '查看日志', action: 'open_log' }, { label: '打开设置', action: 'open_settings' }],
+          raw: 'ready timeout',
+          signature: `E_TIMEOUT:${job.id}`,
+        })
+        update(job, { state: 'failed', error: { code: 'E_TIMEOUT', message: '启动超时' } })
+        void restartMossInfer()
+      }
+    }, 180_000)
+    const runningJob: RunningJob = {
+      child: undefined,
+      out: new LineSplitter(),
+      err: new LineSplitter(),
+      readyTimer,
+      lastLines: [],
+      cancelRequested: false,
+    }
+    running.set(job.id, runningJob)
+    const output = join(outputDir, `${job.id}-1.png`)
+    void runMossInferJob(
+      job,
+      params,
+      { model: mossModelPath!, device: cudaOrdinal, loras, output, settings },
+      {
+        event: (payload) => handleRunnerEvent(job, runningJob, JSON.stringify(payload)),
+        stderr: (line) => appendLog(job, 'stderr', line, runningJob),
+        done: (code) => finish(job, runningJob, code),
+      },
+    ).catch((error: unknown) => {
+      handleRunnerEvent(
+        job,
+        runningJob,
+        JSON.stringify({
+          type: 'error',
+          code: 'E_ENGINE',
+          message: String(error instanceof Error ? error.message : error),
+          fatal: true,
+        }),
+      )
+      finish(job, runningJob, -1)
+    })
+    return snapshot(job)
+  }
 
   let command = ''
   let args: string[] = []
@@ -800,6 +894,14 @@ export async function cancelJob(id: string): Promise<JobRecord | null> {
   }
   runningJob.cancelRequested = true
   appendLog(job, 'system', '正在停止任务…', runningJob)
+  if (job.engine === 'mossinfer') {
+    cancelMossInferJob(job.id)
+    // server 卡死兜底：5 秒后仍无 done-cancelled 则重启引擎，exit 处理会失败活动任务
+    runningJob.killTimer = setTimeout(() => {
+      void restartMossInfer()
+    }, 5000)
+    return snapshot(job)
+  }
   if (runningJob.cancelCommand) {
     try {
       spawn(runningJob.cancelCommand.command, runningJob.cancelCommand.args, {
@@ -813,11 +915,13 @@ export async function cancelJob(id: string): Promise<JobRecord | null> {
     }
   }
   try {
-    runningJob.child.stdin.write(`${PREFIX}{"cmd":"cancel"}\n`)
+    runningJob.child?.stdin.write(`${PREFIX}{"cmd":"cancel"}\n`)
   } catch {
     // ignore
   }
-  runningJob.killTimer = setTimeout(() => killTree(runningJob.child), 5000)
+  runningJob.killTimer = setTimeout(() => {
+    if (runningJob.child) killTree(runningJob.child)
+  }, 5000)
   return snapshot(job)
 }
 
@@ -838,7 +942,7 @@ function notifyCompleted(job: JobRecord): void {
 export function inputJob(id: string, text: string): void {
   const job = jobs.get(id)
   const runningJob = running.get(id)
-  if (!job || !runningJob) return
+  if (!job || !runningJob || !runningJob.child) return
   try {
     runningJob.child.stdin.write(`${text}\n`)
     appendLog(job, 'system', `> ${text}`, runningJob)

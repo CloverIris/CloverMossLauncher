@@ -97,6 +97,10 @@ export const Ipc = {
   pickDialog: 'dialog:pick',
   openPath: 'app:open-path',
   openExternal: 'app:open-external',
+  mossInferDownload: 'mossinfer:download',
+  mossInferDownloadState: 'mossinfer:download-state',
+  mossInferDownloadCancel: 'mossinfer:download-cancel',
+  mossInferCudaLibs: 'mossinfer:install-cuda-libs',
 } as const
 
 export type IpcChannel = (typeof Ipc)[keyof typeof Ipc]
@@ -113,6 +117,7 @@ export const Events = {
   jobLog: 'event:job-log',
   diagnostic: 'event:diagnostic',
   updateDownload: 'event:update-download',
+  mossInferDownload: 'event:mossinfer-download',
 } as const
 
 export type EventChannel = (typeof Events)[keyof typeof Events]

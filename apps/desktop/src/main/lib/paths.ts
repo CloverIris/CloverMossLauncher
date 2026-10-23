@@ -30,6 +30,7 @@ export const paths = {
   modelImports: (custom?: string | null) => join(modelsRoot(custom), 'imports'),
   downloads: () => join(root(), 'downloads'),
   cache: () => join(root(), 'cache'),
+  mossinfer: () => join(root(), 'mossinfer'),
   logs: () => join(root(), 'logs'),
   trainerRoot: (custom?: string | null) => (custom ? resolve(custom) : join(root(), 'trainer')),
   trainerGit: () => join(root(), 'trainer', 'git'),

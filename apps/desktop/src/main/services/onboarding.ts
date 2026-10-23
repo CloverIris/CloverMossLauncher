@@ -5,15 +5,21 @@ import { listInstances } from './instances'
 import { readRuntime } from './runtimes'
 import { getCatalog } from './models'
 import { legacyModelReady } from './modelReadiness'
+import { resolveServerPath } from './mossInfer'
 
-export async function getOnboardingStatus(settings: { modelsRoot: string | null }): Promise<OnboardingStatus> {
+export async function getOnboardingStatus(settings: Settings): Promise<OnboardingStatus> {
   const instances = await listInstances()
+  const useMossInfer = settings.inferenceBackend === 'mossinfer'
   let runtimeReady = false
-  for (const instance of instances) {
-    const runtime = await readRuntime(instance.runtimeId)
-    if (runtime?.state === 'ready') {
-      runtimeReady = true
-      break
+  if (useMossInfer) {
+    runtimeReady = resolveServerPath(settings) !== null
+  } else {
+    for (const instance of instances) {
+      const runtime = await readRuntime(instance.runtimeId)
+      if (runtime?.state === 'ready') {
+        runtimeReady = true
+        break
+      }
     }
   }
   const catalog = await getCatalog(settings as Settings)
@@ -29,10 +35,18 @@ export async function getOnboardingStatus(settings: { modelsRoot: string | null 
     },
     {
       id: 'runtime',
-      status: runtimeReady ? 'ok' : instances.length ? 'partial' : 'missing',
+      status: runtimeReady ? 'ok' : useMossInfer ? 'missing' : instances.length ? 'partial' : 'missing',
       title: '运行时',
-      detail: runtimeReady ? 'Python 依赖已就绪' : instances.length ? '实例已有，但依赖还没装完' : '等待实例创建',
-      action: 'instances',
+      detail: useMossInfer
+        ? runtimeReady
+          ? 'MossInfer 引擎已就绪'
+          : '未找到 moss-server 可执行文件，请在设置中配置'
+        : runtimeReady
+          ? 'Python 依赖已就绪'
+          : instances.length
+            ? '实例已有，但依赖还没装完'
+            : '等待实例创建',
+      action: useMossInfer && !runtimeReady ? 'settings' : 'instances',
     },
     {
       id: 'model',

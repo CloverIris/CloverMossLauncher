@@ -32,6 +32,12 @@ import { installDeps, readRuntime } from './services/runtimes'
 import { getSettings, updateSettings } from './services/settings'
 import { checkUpdates, dismissAnnouncement } from './services/updates'
 import { cancelUpdateDownload, downloadUpdate } from './services/updateDownload'
+import {
+  cancelMossInferDownload,
+  downloadMossInfer,
+  getMossInferDownloadState,
+  installMossInferCudaLibs,
+} from './services/mossInferDownload'
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
@@ -286,6 +292,16 @@ export function registerIpc(): void {
   )
 
   handle(Ipc.updatesCancel, schemas.updatesCancel, ({ version }) => cancelUpdateDownload(version))
+
+  handle(Ipc.mossInferDownload, schemas.mossInferDownload, ({ channel, flavour, variant }) =>
+    downloadMossInfer(channel, flavour, variant),
+  )
+
+  handle(Ipc.mossInferDownloadState, null, () => getMossInferDownloadState())
+
+  handle(Ipc.mossInferDownloadCancel, null, () => cancelMossInferDownload())
+
+  handle(Ipc.mossInferCudaLibs, null, () => installMossInferCudaLibs())
 
   handle(Ipc.notificationTest, null, () => pushTestNotification())
 

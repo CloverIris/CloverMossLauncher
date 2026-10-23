@@ -26,6 +26,13 @@ export const DEFAULT_SETTINGS: Settings = {
   galleryRoots: [],
   homeBackground: null,
   trainerRoot: null,
+  inferenceBackend: 'runner',
+  mossInferServerPath: null,
+  mossInferMemoryMode: 'balanced',
+  mossInferTier: 'auto',
+  mossInferChannel: 'stable',
+  mossInferVariant: 'system-cuda',
+  githubToken: null,
   disabledDevices: [],
   deviceLabels: {},
 }

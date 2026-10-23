@@ -45,8 +45,21 @@ export const schemas = {
       galleryRoots: z.array(z.string().max(4096)).max(20),
       homeBackground: z.string().max(4096).nullable(),
       trainerRoot: z.string().max(4096).nullable(),
+      inferenceBackend: z.enum(['runner', 'mossinfer']),
+      mossInferServerPath: z.string().max(4096).nullable(),
+      mossInferMemoryMode: z.enum(['min_memory', 'balanced', 'max_speed']),
+      mossInferTier: z.enum(['auto', 'reference', 'high', 'turbo']),
+      mossInferChannel: z.enum(['stable', 'dev']),
+      mossInferVariant: z.enum(['system-cuda', 'bundled']),
+      githubToken: z.string().max(200).nullable(),
     })
     .partial(),
+
+  mossInferDownload: z.object({
+    channel: z.enum(['stable', 'dev']),
+    flavour: z.enum(['cu12', 'cu13']).optional(),
+    variant: z.enum(['system-cuda', 'bundled']).optional(),
+  }),
 
   gitBranches: z
     .object({
