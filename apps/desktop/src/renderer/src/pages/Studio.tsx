@@ -267,6 +267,16 @@ export function StudioPage(): React.JSX.Element {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const element = viewportRef.current
+    if (!element) return
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault()
+      zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * 0.0012))
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
+  }, [zoom, pan])
   const [steps, setSteps] = useState(env?.recommendation.steps ?? 8)
   const [cfg, setCfg] = useState(env?.recommendation.profile === 'dmd8' ? 1 : 3)
   const [seed, setSeed] = useState(42)
@@ -1035,7 +1045,6 @@ export function StudioPage(): React.JSX.Element {
           <div
             ref={viewportRef}
             className="relative min-h-0 flex-1 overflow-hidden bg-[#121419]"
-            onWheel={(event) => { event.preventDefault(); zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * 0.0012)) }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'float') }}
           >
