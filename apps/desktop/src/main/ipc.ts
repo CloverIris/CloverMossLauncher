@@ -21,6 +21,7 @@ import {
 import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
+import { closeSshTerminal, inputSshTerminal, listSshTerminals, openSshTerminal } from './services/sshSessions'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { detectSystemCuda } from './services/systemCuda'
 import { installMossInferCudaLibs } from './services/cudaWheels'
@@ -281,12 +282,20 @@ export function registerIpc(): void {
 
   handle(Ipc.engineSystemCuda, schemas.engineSystemCuda, () => detectSystemCuda())
 
+  handle(Ipc.sshTerminalOpen, schemas.sshTerminalOpen, ({ hostId }) => openSshTerminal(hostId))
+
+  handle(Ipc.sshTerminalList, null, () => listSshTerminals())
+
+  handle(Ipc.sshTerminalInput, schemas.sshTerminalInput, ({ id, data }) => { inputSshTerminal(id, data); return true })
+
+  handle(Ipc.sshTerminalClose, schemas.sshTerminalClose, ({ id }) => { closeSshTerminal(id); return true })
+
   handle(Ipc.mossInferCudaLibs, schemas.mossInferCudaLibs, () => installMossInferCudaLibs())
 
   handle(Ipc.engineInstallRemote, schemas.engineInstallRemote, async ({ hostId }) => {
     const host = getTrainingHost(getSettings(), hostId)
     if (!host) throw new Error('主机不存在')
-    return installRemoteEngine(host)
+    return installRemoteEngine(host, (phase, message, percent) => emit(Events.engineRemoteProgress, { hostId, phase, message, percent }))
   })
 
   handle(Ipc.enginePrepareRemoteModel, schemas.enginePrepareRemoteModel, async ({ hostId, repo }) => {

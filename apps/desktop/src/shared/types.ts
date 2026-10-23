@@ -145,6 +145,13 @@ export interface Settings {
   deviceLabels: Record<string, string>
 }
 
+export interface EngineRemoteProgress {
+  hostId: string
+  phase: 'checking' | 'querying' | 'downloading' | 'extracting' | 'installing' | 'done' | 'error'
+  message: string
+  percent?: number
+}
+
 export interface MossInferDownloadState {
   channel: 'stable' | 'dev'
   phase: 'querying' | 'downloading' | 'verifying' | 'extracting' | 'cuda_libs' | 'done' | 'error'

@@ -1,9 +1,10 @@
 import { Cpu, Download, HardDrive, RefreshCw, ShieldCheck, SquareTerminal, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Events, Ipc } from '@shared/channels'
-import type { ManagedHost, MossInferDownloadState } from '@shared/types'
+import type { EngineRemoteProgress, ManagedHost, MossInferDownloadState } from '@shared/types'
 import { call, onEvent } from '../lib/api'
 import { useApp } from '../store'
+import { openWindow } from '../lib/windows'
 import { bytes, dateTime } from '../lib/format'
 import { Button, Card, IconButton, Input, Modal, Pill, Spinner, useToast } from '../components/ui'
 
@@ -23,6 +24,7 @@ export function EnginePage(): React.JSX.Element {
   const [probe, setProbe] = useState<Record<string, unknown> | null>(null)
   const [hosts, setHosts] = useState<ManagedHost[]>([])
   const [remote, setRemote] = useState<Record<string, { available: boolean; path: string; error?: string }>>({})
+  const [remoteProgress, setRemoteProgress] = useState<Record<string, EngineRemoteProgress>>({})
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState<string | null>(null)
   const [installingRemote, setInstallingRemote] = useState<string | null>(null)
@@ -49,6 +51,22 @@ export function EnginePage(): React.JSX.Element {
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { setGithubToken(settings?.githubToken ?? '') }, [settings?.githubToken])
   useEffect(() => onEvent<MossInferDownloadState>(Events.mossInferDownload, setDownload), [])
+  useEffect(() => onEvent<EngineRemoteProgress>(Events.engineRemoteProgress, (progress) => {
+    setRemoteProgress((previous) => ({ ...previous, [progress.hostId]: progress }))
+  }), [])
+  useEffect(() => {
+    if (!hosts.length) return
+    let cancelled = false
+    void Promise.all(hosts.map(async (host) => {
+      try {
+        const result = await call<{ available: boolean; path: string; error?: string }>(Ipc.engineRemoteStatus, { hostId: host.id })
+        if (!cancelled) setRemote((previous) => ({ ...previous, [host.id]: result }))
+      } catch (error) {
+        if (!cancelled) setRemote((previous) => ({ ...previous, [host.id]: { available: false, path: host.engineRoot ?? '~/.mossstudio/engine', error: error instanceof Error ? error.message : String(error) } }))
+      }
+    }))
+    return () => { cancelled = true }
+  }, [hosts])
 
   async function runDownload(selected: 'bundled' | 'system-cuda', flavour?: 'cu12' | 'cu13', cudaWheels = false): Promise<void> {
     setBusy(true)
@@ -129,6 +147,15 @@ export function EnginePage(): React.JSX.Element {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function openSshTerminal(hostId: string): Promise<void> {
+    try {
+      await call(Ipc.sshTerminalOpen, { hostId })
+      openWindow('terminal')
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
     }
   }
 
@@ -282,9 +309,11 @@ export function EnginePage(): React.JSX.Element {
                   <div className="flex items-center gap-2"><HardDrive className="size-3.5 text-[var(--color-text-tertiary)]" />{host.name}<span className="text-[var(--color-text-tertiary)]">{host.user}@{host.host}</span></div>
                   <p className="mt-0.5 truncate font-mono text-[8.5px] text-[var(--color-text-tertiary)]">{status?.path ?? host.engineRoot ?? '~/.mossstudio/engine/bin/moss-server'}{status?.error ? ` · ${status.error}` : ''}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 flex-col items-end gap-1">
                   {status ? <Pill tone={status.available ? 'accent' : 'red'}>{status.available ? 'ready' : 'missing'}</Pill> : null}
+                  {remoteProgress[host.id] ? <span className={`text-[8px] ${remoteProgress[host.id].phase === 'error' ? 'text-red-300' : 'text-amber-300'}`}>{remoteProgress[host.id].phase} · {remoteProgress[host.id].message}</span> : null}
                   <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
+                  <Button tone="ghost" onClick={() => void openSshTerminal(host.id)}>SSH 终端</Button>
                   {installingRemote === host.id ? <span className="text-[8.5px] text-amber-300">远端下载/解压中…</span> : <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>安装引擎</Button>}
                   <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
                 </div>

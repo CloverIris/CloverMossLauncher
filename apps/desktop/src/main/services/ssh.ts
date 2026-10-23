@@ -219,3 +219,7 @@ export async function probeHost(host: TrainingHost): Promise<RemoteProbe> {
     raw: result.stdout,
   }
 }
+
+export function sshTerminalArgs(host: TrainingHost, command = 'bash -l'): string[] {
+  return [...commonArgs(host), '-tt', targetOf(host), command]
+}

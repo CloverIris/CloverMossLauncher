@@ -323,6 +323,10 @@ export const schemas = {
 
   caseRemove: z.object({ id: z.string().min(1).max(80) }),
 
+  sshTerminalOpen: z.object({ hostId: z.string().min(1).max(80) }),
+  sshTerminalInput: z.object({ id: z.string().min(1).max(120), data: z.string().max(65536) }),
+  sshTerminalClose: z.object({ id: z.string().min(1).max(120) }),
+
   jobStart: z.object({
     instanceId: z.string().min(1).max(120),
     prompt: z.string().max(32768),

@@ -3,7 +3,9 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { Square, SquareTerminal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Events, Ipc } from '@shared/channels'
 import { useApp } from '../store'
+import { call, onEvent } from '../lib/api'
 import { cn } from '../components/ui'
 
 const stateLabel = {
@@ -33,6 +35,8 @@ export function TerminalPage(): React.JSX.Element {
   const sendJobInput = useApp((state) => state.sendJobInput)
   const cancelJob = useApp((state) => state.cancelJob)
   const [engine, setEngine] = useState('all')
+  const [sessions, setSessions] = useState<Array<{ id: string; hostId: string; hostName: string; startedAt: string; exitCode?: number | null; buffer: string }>>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 
   const ordered = useMemo(
     () =>
@@ -62,6 +66,25 @@ export function TerminalPage(): React.JSX.Element {
   useEffect(() => {
     if (active && !logsByJob[active.id]) void loadJobLogs(active.id)
   }, [active?.id, logsByJob, loadJobLogs])
+  useEffect(() => {
+    const current = jobs.find((job) => job.id === activeJobId)
+    if (current && !['failed', 'canceled', 'succeeded'].includes(current.state)) return
+    const next = jobs.find((job) => job.state === 'running' || job.state === 'starting')
+    if (next) setActiveJob(next.id)
+  }, [jobs, activeJobId, setActiveJob])
+
+  useEffect(() => {
+    void call<typeof sessions>(Ipc.sshTerminalList).then(setSessions).catch(() => undefined)
+    const offData = onEvent<{ sessionId: string; data: string }>(Events.terminalData, (payload) => {
+      setSessions((previous) => previous.map((session) => session.id === payload.sessionId ? { ...session, buffer: `${session.buffer}${payload.data}`.slice(-200_000) } : session))
+      if (payload.sessionId === activeSessionId) termRef.current?.write(payload.data)
+    })
+    const offExit = onEvent<{ sessionId: string; code: number | null }>(Events.terminalExit, (payload) => {
+      setSessions((previous) => previous.map((session) => session.id === payload.sessionId ? { ...session, exitCode: payload.code } : session))
+      if (payload.sessionId === activeSessionId) termRef.current?.write(`\r\n\x1b[38;2;217;107;107m[会话已结束 ${payload.code ?? 'null'}]\x1b[0m\r\n`)
+    })
+    return () => { offData(); offExit() }
+  }, [activeSessionId])
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -104,6 +127,15 @@ export function TerminalPage(): React.JSX.Element {
     termRef.current = term
     fitRef.current = fit
     const dataSub = term.onData((data) => {
+      if (activeSessionId) {
+        void call(Ipc.sshTerminalInput, { id: activeSessionId, data })
+        return
+      }
+      if (data.includes('\x03')) {
+        const current = useApp.getState().activeJobId
+        if (current) void cancelJob(current)
+        return
+      }
       const current = useApp.getState().activeJobId
       if (!current) return
       const job = useApp.getState().jobs.find((item) => item.id === current)
@@ -125,11 +157,20 @@ export function TerminalPage(): React.JSX.Element {
       termRef.current = null
       fitRef.current = null
     }
-  }, [sendJobInput])
+  }, [sendJobInput, activeSessionId, cancelJob])
 
   useEffect(() => {
     const term = termRef.current
-    if (!term || !active) return
+    const session = sessions.find((item) => item.id === activeSessionId)
+    if (!term || !session) return
+    term.clear()
+    term.write(`\x1b[38;2;138;182;255mSSH ${session.hostName}\x1b[0m  ${session.startedAt}\r\n\r\n`)
+    if (session.buffer) term.write(session.buffer)
+  }, [activeSessionId])
+
+  useEffect(() => {
+    const term = termRef.current
+    if (!term || !active || activeSessionId) return
     if (activeIdRef.current !== active.id) {
       activeIdRef.current = active.id
       writtenRef.current = 0
@@ -166,10 +207,27 @@ export function TerminalPage(): React.JSX.Element {
         <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[11px] font-medium">
             <SquareTerminal className="size-3.5 text-[var(--color-text-tertiary)]" />
-            引擎控制台
+            引擎 / 推理进程
           </div>
           <span className="text-[9.5px] text-[var(--color-text-tertiary)]">{visible.length}</span>
         </header>
+        <div className="border-b border-[var(--color-border-subtle)] px-1.5 py-1.5">
+          <div className="mb-1 flex items-center justify-between text-[8.5px] font-medium uppercase tracking-[0.1em] text-[var(--color-text-tertiary)]">
+            <span>SSH 会话</span>
+            <span>{sessions.filter((item) => item.exitCode == null).length}</span>
+          </div>
+          <div className="space-y-1">
+            {sessions.map((session) => (
+              <div key={session.id} className={cn('flex items-center gap-1 rounded border px-1.5 py-1', activeSessionId === session.id ? 'border-accent-500/40 bg-accent-500/10' : 'border-[var(--color-border-subtle)]')}>
+                <button type="button" className="min-w-0 flex-1 truncate text-left text-[9px]" onClick={() => { setActiveSessionId(session.id); setActiveJob(null) }}>
+                  {session.hostName}{session.exitCode != null ? ' · 已结束' : ''}
+                </button>
+                <button type="button" className="text-[var(--color-text-tertiary)] hover:text-red-300" onClick={() => { void call(Ipc.sshTerminalClose, { id: session.id }); setSessions((previous) => previous.filter((item) => item.id !== session.id)); if (activeSessionId === session.id) setActiveSessionId(null) }}><span className="text-[10px]">×</span></button>
+              </div>
+            ))}
+            {sessions.length === 0 ? <p className="text-[8.5px] text-[var(--color-text-tertiary)]">在引擎页点“SSH 终端”打开服务器 TTY</p> : null}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-1 border-b border-[var(--color-border-subtle)] px-1.5 py-1.5">
           {['all', ...engines].map((key) => (
             <button
@@ -246,7 +304,7 @@ export function TerminalPage(): React.JSX.Element {
         <header className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] px-3">
           <div className="flex min-w-0 items-baseline gap-2">
             <span className="truncate text-[11px] font-medium">
-              {active ? active.params.prompt.trim().slice(0, 48) || active.instanceName : '没有选中任务'}
+              {activeSessionId ? sessions.find((item) => item.id === activeSessionId)?.hostName ?? 'SSH 会话' : active ? active.params.prompt.trim().slice(0, 48) || active.instanceName : '没有选中任务'}
             </span>
             {active ? (
               <span className="text-[9.5px] text-[var(--color-text-tertiary)]">
@@ -254,7 +312,7 @@ export function TerminalPage(): React.JSX.Element {
               </span>
             ) : null}
           </div>
-          {active && (active.state === 'running' || active.state === 'starting') ? (
+          {!activeSessionId && active && (active.state === 'running' || active.state === 'starting') ? (
             <button
               type="button"
               onClick={() => void cancelJob(active.id)}

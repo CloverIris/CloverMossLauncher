@@ -242,7 +242,21 @@ export function StudioPage(): React.JSX.Element {
   const [hosts, setHosts] = useState<ManagedHost[]>([])
   const [engineHostId, setEngineHostId] = useState('')
   const [remoteModelPath, setRemoteModelPath] = useState('')
-  useEffect(() => { void call<ManagedHost[]>(Ipc.hostsList).then((list) => setHosts(list.filter((host) => host.kind === 'ssh'))).catch(() => undefined) }, [])
+  useEffect(() => {
+    let cancelled = false
+    const load = async (): Promise<void> => {
+      const list = await call<ManagedHost[]>(Ipc.hostsList)
+      if (cancelled) return
+      const ssh = list.filter((host) => host.kind === 'ssh')
+      setHosts(ssh)
+      // Hosts with no persisted probe result are tested in the background; no device-page detour.
+      for (const host of ssh.filter((item) => item.status !== 'ok')) {
+        void call(Ipc.hostsTest, { id: host.id }).then(() => { if (!cancelled) void call<ManagedHost[]>(Ipc.hostsList).then((next) => { if (!cancelled) setHosts(next.filter((item) => item.kind === 'ssh')) }) }).catch(() => undefined)
+      }
+    }
+    void load().catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
   const env = useApp((state) => state.env)
 
   const [prompt, setPrompt] = useState(storedPrompt)

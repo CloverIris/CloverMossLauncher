@@ -2,6 +2,10 @@ export const Ipc = {
   appInfo: 'app:info',
   backendInfo: 'backend:info',
   windowOpen: 'window:open',
+  sshTerminalOpen: 'ssh-terminal:open',
+  sshTerminalList: 'ssh-terminal:list',
+  sshTerminalInput: 'ssh-terminal:input',
+  sshTerminalClose: 'ssh-terminal:close',
   copyText: 'app:copy',
   devicesList: 'devices:list',
   hostsList: 'hosts:list',
@@ -124,6 +128,9 @@ export const Events = {
   diagnostic: 'event:diagnostic',
   updateDownload: 'event:update-download',
   mossInferDownload: 'event:mossinfer-download',
+  engineRemoteProgress: 'event:engine-remote-progress',
+  terminalData: 'event:ssh-terminal-data',
+  terminalExit: 'event:ssh-terminal-exit',
 } as const
 
 export type EventChannel = (typeof Events)[keyof typeof Events]

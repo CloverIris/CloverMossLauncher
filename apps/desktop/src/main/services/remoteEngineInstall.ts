@@ -73,20 +73,23 @@ async function artifactSource(): Promise<{ version: string; url: string; name: s
   return { version: `ci-${String(run.head_sha ?? '').slice(0, 8)}`, url: location, name: artifact.name ?? 'artifact' }
 }
 
-export async function installRemoteEngine(host: TrainingHost): Promise<{ version: string; path: string; asset: string }> {
+export async function installRemoteEngine(host: TrainingHost, progress?: (phase: 'checking' | 'querying' | 'downloading' | 'extracting' | 'installing' | 'done' | 'error', message: string, percent?: number) => void): Promise<{ version: string; path: string; asset: string }> {
   const root = (host.engineRoot || '~/.mossstudio/engine').replace(/\/$/, '')
+  progress?.('checking', '检查远端 Linux/curl/tar/unzip…', 5)
   const remote = await sshExec(host, 'uname -s -m; command -v curl >/dev/null 2>&1; command -v tar >/dev/null 2>&1; command -v unzip >/dev/null 2>&1; echo READY', 20_000)
   if (!/Linux\s+x86_64/i.test(remote.stdout) || !remote.stdout.includes('READY')) {
     throw new Error('远端引擎安装只支持 Linux x86_64，且需要 curl/tar/unzip')
   }
+  progress?.('querying', '查询上游 Release / CI artifact…', 15)
   const source = (await releaseSource()) ?? (await artifactSource())
+  progress?.('downloading', `下载 ${source.name}…`, 25)
   const staging = `${root}.staging`
   const archive = `${staging}.download`
   const script = [
     'set -e',
     `rm -rf ${posixQuote(staging)} ${posixQuote(archive)}`,
     `mkdir -p ${posixQuote(staging)}`,
-    `curl -L --fail --retry 3 --silent --show-error -o ${posixQuote(archive)} ${posixQuote(source.url)}`,
+    `curl -L --fail --retry 3 --silent --show-error --progress-bar -o ${posixQuote(archive)} ${posixQuote(source.url)}`,
     `mkdir -p ${posixQuote(`${staging}/outer`)}`,
     `unzip -q ${posixQuote(archive)} -d ${posixQuote(`${staging}/outer`)}`,
     `archive=$(find ${posixQuote(`${staging}/outer`)} -type f -name 'mossinfer-*linux-*x86_64*.tar.gz' ! -name '*-system-cuda*' | head -n1)`,
@@ -101,7 +104,12 @@ export async function installRemoteEngine(host: TrainingHost): Promise<{ version
     `chmod +x ${posixQuote(`${root}/bin/moss-server`)}`,
     `rm -rf ${posixQuote(staging)}`,
   ].join('\n')
+  progress?.('extracting', '远端解压/安装引擎…', 70)
   const result = await sshExec(host, script, 30 * 60_000)
-  if (result.code !== 0) throw new Error(`远端引擎安装失败：${(result.stderr || result.stdout).trim().slice(-1800)}`)
+  if (result.code !== 0) {
+    progress?.('error', '远端安装失败', 100)
+    throw new Error(`远端引擎安装失败：${(result.stderr || result.stdout).trim().slice(-1800)}`)
+  }
+  progress?.('done', `引擎 ${source.version} 已安装`, 100)
   return { version: source.version, path: `${root}/bin/moss-server`, asset: source.name }
 }

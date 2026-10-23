@@ -21,6 +21,7 @@ import { createInstance, deleteInstance, listInstances, updateInstance } from '.
 import { installDeps, readRuntime, resolveTorchIndex, writeRemoteRuntime } from './services/runtimes'
 import { cancelJob, getJob, getJobLogs, onJobCompleted, startEngineJob, startTrainingJob } from './services/supervisor'
 import { shutdownMossInfer } from './services/mossInfer'
+import { closeAllSshTerminals } from './services/sshSessions'
 import { createTrainerVersion, listTrainerVersions, startTrainerRun } from './services/trainers'
 import { listLaunchRows, removeLaunchRow, upsertLaunchRow } from './services/launchQueue'
 import { listCases, removeCase, saveCase } from './services/cases'
@@ -1741,6 +1742,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  closeAllSshTerminals()
   stopBackend()
   void shutdownMossInfer()
 })
