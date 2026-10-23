@@ -111,6 +111,7 @@ export const Ipc = {
   galleryItem: 'gallery:item',
   galleryReveal: 'gallery:reveal',
   pickDialog: 'dialog:pick',
+  pickImages: 'dialog:pick-images',
   openPath: 'app:open-path',
   openExternal: 'app:open-external',
   mossInferDownload: 'mossinfer:download',

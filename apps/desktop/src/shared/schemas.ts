@@ -275,10 +275,14 @@ export const schemas = {
   gbcInstallEnv: z.object({ versionId: z.string().min(1).max(160) }),
 
   gbcRun: z.object({
-    folder: z.string().min(1).max(4096),
+    folder: z.string().max(4096).optional(),
+    files: z.array(z.string().max(4096)).max(2000).optional(),
     providerId: z.string().min(1).max(120),
     detector: z.enum(['owlv2', 'sam3']).default('owlv2'),
-  }),
+    versionId: z.string().max(160).optional(),
+    sidecarJson: z.boolean().optional(),
+    sidecarTxt: z.boolean().optional(),
+  }).refine((value) => Boolean(value.folder?.trim() || value.files?.length), { message: '需要选择图片目录或图片文件' }),
 
   aiChat: z.object({
     providerId: z.string().min(1).max(120),
@@ -386,6 +390,8 @@ export const schemas = {
   galleryItem: z.object({ path: pathLike }),
 
   galleryReveal: z.object({ path: pathLike }),
+
+  pickImages: z.object({ title: z.string().max(120).optional() }),
 
   pickDialog: z.object({
     kind: z.enum(['folder', 'image', 'file']).default('folder'),

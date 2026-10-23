@@ -468,6 +468,15 @@ export function registerIpc(): void {
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
+  handle(Ipc.pickImages, schemas.pickImages, async ({ title }) => {
+    const result = await dialog.showOpenDialog({
+      title,
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }],
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+
   handle(Ipc.openPath, schemas.openPath, async ({ path }) => {
     const allowed = [paths.root(), paths.models(getSettings().modelsRoot)]
     if (!allowed.some((base) => isInside(base, path))) throw new Error('路径不在允许范围内')

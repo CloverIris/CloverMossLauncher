@@ -21,10 +21,23 @@ export interface GbcGraph {
 }
 
 export interface GbcRunInput {
-  folder: string
+  folder?: string
+  files?: string[]
   providerId: string
   detector: 'owlv2' | 'sam3'
   versionId?: string
+  sidecarJson?: boolean
+  sidecarTxt?: boolean
+}
+
+export interface GbcImageResult {
+  key: string
+  name: string
+  path: string
+  summary: string
+  vertices: GbcVertex[]
+  graph?: GbcGraph
+  graphCount?: number
 }
 
 export interface GbcRunResult {
@@ -34,4 +47,6 @@ export interface GbcRunResult {
   vertexCount: number
   summary: string
   vertices: GbcVertex[]
+  images: GbcImageResult[]
+  sidecarFiles?: string[]
 }

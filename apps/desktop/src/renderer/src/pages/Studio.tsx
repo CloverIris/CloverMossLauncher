@@ -51,7 +51,7 @@ import { Button, Card, IconButton, Input, Modal, Pill, Segmented, Select, Textar
 import { PromptSegmentsModal } from '../components/PromptSegmentsModal'
 import { GbcImportModal } from '../components/GbcImportModal'
 import { AgentSidebar } from '../components/AgentSidebar'
-import type { GbcRunResult } from '@shared/gbc'
+import type { GbcImageResult, GbcRunResult } from '@shared/gbc'
 
 const SIZE_PRESETS: Array<[string, number, number]> = [
   ['512²', 512, 512],
@@ -274,6 +274,7 @@ export function StudioPage(): React.JSX.Element {
   const [segmentsOpen, setSegmentsOpen] = useState(false)
   const [gbcOpen, setGbcOpen] = useState(false)
   const [gbcTab, setGbcTab] = useState<'run' | 'manage'>('run')
+  const [gbcPending, setGbcPending] = useState<{ result: GbcRunResult; image?: GbcImageResult } | null>(null)
   const [docks, setDocks] = useState(DEFAULT_DOCKS)
   const [leftWidth, setLeftWidth] = useState(300)
   const [rightWidth, setRightWidth] = useState(320)
@@ -696,7 +697,7 @@ export function StudioPage(): React.JSX.Element {
     }
   }
 
-  function importGbc(result: GbcRunResult): void {
+  function applyGbcImport(result: GbcRunResult, image: GbcImageResult | undefined, mode: 'append' | 'overwrite'): void {
     const items = result.vertices.flatMap((vertex) => {
       if (!vertex.bbox) return []
       const caption = vertex.descs?.find((desc) => desc.text)?.text?.trim() ?? ''
@@ -720,9 +721,18 @@ export function StudioPage(): React.JSX.Element {
     setDraft((previous) => ({
       ...previous,
       summary: { ...previous.summary, caption: previous.summary.caption || result.summary },
-      items: [...previous.items, ...items],
+      items: mode === 'overwrite' ? items : [...previous.items, ...items],
     }))
-    toast.push(`已导入 ${items.length} 个 GBC 区域`, 'success')
+    if (mode === 'overwrite') setSelectedId(null)
+    toast.push(`已写入 ${items.length} 个 GBC 区域${image ? `（${image.name}）` : ''}`, 'success')
+  }
+
+  function requestGbcImport(result: GbcRunResult, image?: GbcImageResult): void {
+    if (draft.items.length > 0) {
+      setGbcPending({ result, image })
+      return
+    }
+    applyGbcImport(result, image, 'append')
   }
 
   async function generate(): Promise<void> {
@@ -1288,8 +1298,27 @@ export function StudioPage(): React.JSX.Element {
         open={gbcOpen}
         initialTab={gbcTab}
         onClose={() => setGbcOpen(false)}
-        onImport={importGbc}
+        onImport={requestGbcImport}
       />
+
+      <Modal
+        open={Boolean(gbcPending)}
+        onClose={() => setGbcPending(null)}
+        title="画布已有内容"
+        description="GBC 写入区域前，请选择如何处理当前画布。"
+        width="max-w-md"
+        footer={
+          <>
+            <Button tone="ghost" onClick={() => setGbcPending(null)}>取消</Button>
+            <Button tone="secondary" onClick={() => { if (gbcPending) { applyGbcImport(gbcPending.result, gbcPending.image, 'append'); setGbcPending(null) } }}>追加到现有图层</Button>
+            <Button tone="danger" onClick={() => { if (gbcPending) { applyGbcImport(gbcPending.result, gbcPending.image, 'overwrite'); setGbcPending(null) } }}>覆盖当前图层</Button>
+          </>
+        }
+      >
+        <div className="p-4 text-[10.5px] leading-5 text-[var(--color-text-secondary)]">
+          当前画布有 {draft.items.length} 个区域。追加会保留现有内容；覆盖会清空现有区域后写入本张 GBC 结果。
+        </div>
+      </Modal>
 
       <PromptSegmentsModal
         open={segmentsOpen}
