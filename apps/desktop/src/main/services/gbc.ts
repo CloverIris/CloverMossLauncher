@@ -7,17 +7,22 @@ import { paths } from '../lib/paths'
 import { firstLine, run, tail } from '../lib/run'
 import { getProviderSecret } from './ai'
 import { listGbcVersions } from './gbcGit'
+import { getSettings } from './settings'
 
 function detectorModel(detector: GbcRunInput['detector']): string {
   return detector === 'sam3' ? 'facebook/sam3' : 'google/owlv2-base-patch16-ensemble'
 }
 
 export async function gbcStatus(): Promise<{ available: boolean; version?: string; error?: string }> {
-  const result = await run('gbc', ['--help'], { timeoutMs: 8000 })
+  for (const version of await listGbcVersions(getSettings()).catch(() => [])) {
+    const bundled = process.platform === 'win32' ? join(version.path, '.venv', 'Scripts', 'gbc.exe') : join(version.path, '.venv', 'bin', 'gbc')
+    if (existsSync(bundled)) return { available: true, version: `${version.name} · ${version.shortCommit}` }
+  }
+  const result = await run(process.env['CLOVER_GBC_BIN'] || 'gbc', ['--help'], { timeoutMs: 8000 })
   if (result.code === 0) return { available: true, version: firstLine(result.stdout).slice(0, 120) }
   return {
     available: false,
-    error: '未找到 gbc 命令。请在实例运行时安装 kohakugbc[torch] 并把 .venv/bin 加入 PATH，或设置 CLOVER_GBC_BIN。',
+    error: '未找到可用的 GBC。先在“GBC 版本”里克隆并安装环境，或安装 kohakugbc[torch] 并设置 CLOVER_GBC_BIN。',
   }
 }
 
@@ -59,8 +64,8 @@ export async function runGbc(input: GbcRunInput): Promise<GbcRunResult> {
   const keyEnv = 'MOSSTUDIO_GBC_API_KEY'
   const configPath = join(out, 'machine.py')
   await writeFile(configPath, configFor(input, provider, out, keyEnv, device), 'utf8')
-  const version = input.versionId ? (await listGbcVersions(await import('./settings').then((m) => m.getSettings()))).find((item) => item.id === input.versionId) : null
-  const bundled = version ? join(version.path, '.venv', 'bin', 'gbc') : ''
+  const version = input.versionId ? (await listGbcVersions(getSettings())).find((item) => item.id === input.versionId) : null
+  const bundled = version ? (process.platform === 'win32' ? join(version.path, '.venv', 'Scripts', 'gbc.exe') : join(version.path, '.venv', 'bin', 'gbc')) : ''
   const command = bundled && existsSync(bundled) ? bundled : process.env['CLOVER_GBC_BIN'] || 'gbc'
   const result = await run(command, ['run', configPath], {
     cwd: version?.path ?? out,
