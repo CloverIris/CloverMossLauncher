@@ -12,6 +12,7 @@ import type {
   JobRecord,
   JobStage,
   JobState,
+  ModelBinding,
   WorkspaceKind,
 } from '@shared/types'
 import { emit } from '../lib/events'
@@ -749,6 +750,128 @@ export async function startJob(input: StartJobInput): Promise<JobRecord> {
   return snapshot(job)
 }
 
+
+export interface StartEngineJobInput {
+  modelBinding?: ModelBinding
+  modelName?: string
+  prompt: string
+  negativePrompt?: string
+  width: number
+  height: number
+  steps: number
+  cfg: number
+  seed: number
+  profile?: 'base' | 'dmd8'
+  deviceId?: string
+}
+
+/** Generate directly through MossInfer; no Instance, repo worktree or Python runtime. */
+export async function startEngineJob(input: StartEngineJobInput): Promise<JobRecord> {
+  await loadJobs()
+  const settings = getSettings()
+  const serverPath = resolveServerPath(settings)
+  if (!serverPath || !existsSync(serverPath)) throw new Error('未找到 moss-server；请先在引擎页下载或配置引擎')
+  if (!input.prompt.trim()) throw new Error('提示词不能为空')
+
+  let modelPath: string | undefined
+  let modelSnapshot: unknown
+  if (input.modelBinding) {
+    const bundlePath = await prepareModelBundle(input.modelBinding, settings)
+    modelPath = bundlePath
+    modelSnapshot = JSON.parse(await readFile(join(bundlePath, 'clover_model.json'), 'utf8'))
+  } else {
+    modelPath =
+      (await resolveLegacyModelPath(
+        join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'),
+      )) ?? undefined
+  }
+  if (!modelPath) throw new Error('模型权重尚未就绪，请先在模型库下载 MOSS-Image')
+
+  const params: JobParams = {
+    prompt: input.prompt,
+    negativePrompt: input.negativePrompt ?? '',
+    width: input.width,
+    height: input.height,
+    steps: input.steps,
+    cfg: input.cfg,
+    seed: input.seed,
+    profile: input.profile ?? 'base',
+  }
+  const job: JobRecord = {
+    id: `job-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`,
+    instanceId: 'engine',
+    instanceName: input.modelName ?? 'MossInfer',
+    workspace: 'clover',
+    modelSnapshot,
+    deviceId: input.deviceId,
+    kind: 'inference',
+    mode: 'runner',
+    engine: 'mossinfer',
+    state: 'starting',
+    stage: 'idle',
+    params,
+    progress: { stage: 'idle', current: 0, total: params.steps, percent: 0 },
+    startedAt: new Date().toISOString(),
+  }
+  job.logPath = logPath(job.id)
+  jobs.set(job.id, job)
+  logs.set(job.id, [])
+  seqs.set(job.id, 0)
+  emit(Events.job, snapshot(job))
+
+  const outputDir = paths.outputs()
+  await mkdir(outputDir, { recursive: true })
+  const readyTimer = setTimeout(() => {
+    if (job.state === 'starting') {
+      pushDiagnostic({
+        jobId: job.id,
+        ruleId: 'E_TIMEOUT',
+        severity: 'error',
+        title: '启动超时',
+        explain: 'moss-server 在 180 秒内没有就绪，通常是引擎启动或模型加载失败。',
+        solutions: [{ label: '查看日志', action: 'open_log' }, { label: '打开引擎', action: 'open_settings' }],
+        raw: 'ready timeout',
+        signature: `E_TIMEOUT:${job.id}`,
+      })
+      update(job, { state: 'failed', error: { code: 'E_TIMEOUT', message: '启动超时' } })
+      void restartMossInfer()
+    }
+  }, 180_000)
+  const runningJob: RunningJob = {
+    child: undefined,
+    out: new LineSplitter(),
+    err: new LineSplitter(),
+    readyTimer,
+    lastLines: [],
+    cancelRequested: false,
+  }
+  running.set(job.id, runningJob)
+  const cudaOrdinal = input.deviceId?.startsWith('cuda:') ? Number(input.deviceId.slice(5)) : -1
+  const output = join(outputDir, `${job.id}-1.png`)
+  void runMossInferJob(
+    job,
+    params,
+    { model: modelPath, device: cudaOrdinal, loras: [], output, settings },
+    {
+      event: (payload) => handleRunnerEvent(job, runningJob, JSON.stringify(payload)),
+      stderr: (line) => appendLog(job, 'stderr', line, runningJob),
+      done: (code) => finish(job, runningJob, code),
+    },
+  ).catch((error: unknown) => {
+    handleRunnerEvent(
+      job,
+      runningJob,
+      JSON.stringify({
+        type: 'error',
+        code: 'E_ENGINE',
+        message: String(error instanceof Error ? error.message : error),
+        fatal: true,
+      }),
+    )
+    finish(job, runningJob, -1)
+  })
+  return snapshot(job)
+}
 
 export interface StartTrainingJobInput {
   versionId: string

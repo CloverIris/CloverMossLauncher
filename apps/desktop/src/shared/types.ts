@@ -701,6 +701,8 @@ export interface ProjectDocument {
   steps: number
   cfg: number
   instanceId?: string
+  modelBundleId?: string
+  deviceId?: string
   backgroundPath?: string
   seriesId?: string
   page?: number

@@ -29,6 +29,7 @@ export const paths = {
   adapters: (custom?: string | null) => join(modelsRoot(custom), 'adapters'),
   modelImports: (custom?: string | null) => join(modelsRoot(custom), 'imports'),
   downloads: () => join(root(), 'downloads'),
+  outputs: () => join(root(), 'outputs'),
   cache: () => join(root(), 'cache'),
   mossinfer: () => join(root(), 'mossinfer'),
   logs: () => join(root(), 'logs'),

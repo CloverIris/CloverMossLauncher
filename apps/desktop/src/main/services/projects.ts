@@ -73,6 +73,8 @@ export interface SaveProjectInput {
   steps: number
   cfg: number
   instanceId?: string
+  modelBundleId?: string
+  deviceId?: string
   backgroundPath?: string
   seriesId?: string
   page?: number
@@ -104,6 +106,8 @@ export function saveProject(input: SaveProjectInput): ProjectDocument {
     steps: input.steps,
     cfg: input.cfg,
     instanceId: input.instanceId,
+    modelBundleId: input.modelBundleId,
+    deviceId: input.deviceId,
     backgroundPath,
     seriesId: input.seriesId?.trim() || existing?.seriesId || undefined,
     page: input.page ?? existing?.page ?? 1,

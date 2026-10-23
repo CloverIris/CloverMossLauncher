@@ -172,6 +172,8 @@ interface DraftTabSnapshot {
   steps: number
   cfg: number
   instanceId: string
+  modelBundleId: string
+  deviceId: string
   seriesId: string
   page: number
   background: GalleryItem | null
@@ -208,6 +210,8 @@ function projectSnapshot(input: {
   steps: number
   cfg: number
   instanceId: string
+  modelBundleId: string
+  deviceId: string
   backgroundPath?: string
   seriesId: string
   page: number
@@ -240,6 +244,8 @@ export function StudioPage(): React.JSX.Element {
     }
   }, [background, setStudioBackground])
   const instances = useApp((state) => state.instances)
+  const catalog = useApp((state) => state.catalog)
+  const devices = useApp((state) => state.devices)
   const env = useApp((state) => state.env)
 
   const [prompt, setPrompt] = useState(storedPrompt)
@@ -282,6 +288,10 @@ export function StudioPage(): React.JSX.Element {
   const [seed, setSeed] = useState(42)
   const [selectedInstanceId, setInstanceId] = useState(studioInstanceId ?? '')
   const instanceId = instances.find((item) => item.id === selectedInstanceId)?.id ?? instances[0]?.id ?? ''
+  const [modelBundleId, setModelBundleId] = useState(() => localStorage.getItem('mossstudio.modelBundleId') ?? '')
+  const [deviceId, setDeviceId] = useState(() => localStorage.getItem('mossstudio.deviceId') ?? '')
+  const modelBundle = catalog?.bundles.find((bundle) => bundle.id === modelBundleId) ?? null
+  const modelBinding = modelBundle ? { bundleId: modelBundle.id, ...modelBundle.components } : undefined
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [projectId, setProjectId] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('未命名 Project')
@@ -292,8 +302,8 @@ export function StudioPage(): React.JSX.Element {
   const lastSaved = useRef('')
   const skipAutosave = useRef(false)
   const snapshot = useMemo(
-    () => projectSnapshot({ name: projectName, draft, prompt, negative, seed, steps, cfg, instanceId, backgroundPath: background?.path, seriesId, page }),
-    [projectName, draft, prompt, negative, seed, steps, cfg, instanceId, background?.path, seriesId, page],
+    () => projectSnapshot({ name: projectName, draft, prompt, negative, seed, steps, cfg, instanceId, modelBundleId, deviceId, backgroundPath: background?.path, seriesId, page }),
+    [projectName, draft, prompt, negative, seed, steps, cfg, instanceId, modelBundleId, deviceId, background?.path, seriesId, page],
   )
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -304,6 +314,18 @@ export function StudioPage(): React.JSX.Element {
   useEffect(() => {
     if (studioInstanceId) setInstanceId(studioInstanceId)
   }, [studioInstanceId])
+  useEffect(() => {
+    if (modelBundleId || !catalog?.bundles.length) return
+    const next = catalog.bundles.find((bundle) => bundle.recommended) ?? catalog.bundles[0]
+    setModelBundleId(next.id)
+    localStorage.setItem('mossstudio.modelBundleId', next.id)
+  }, [catalog, modelBundleId])
+  useEffect(() => {
+    if (deviceId || !devices.length) return
+    const next = devices.find((device) => device.kind === 'cuda') ?? devices[0]
+    setDeviceId(next.id)
+    localStorage.setItem('mossstudio.deviceId', next.id)
+  }, [devices, deviceId])
 
   useEffect(() => {
     if (!requestedInstanceId || !instances.some((item) => item.id === requestedInstanceId)) return
@@ -519,6 +541,8 @@ export function StudioPage(): React.JSX.Element {
         steps,
         cfg,
         instanceId: instanceId || undefined,
+        modelBundleId: modelBundleId || undefined,
+        deviceId: deviceId || undefined,
         backgroundPath: background?.path,
         seriesId: seriesId || undefined,
         page,
@@ -527,7 +551,7 @@ export function StudioPage(): React.JSX.Element {
       setDraftTab(null)
       setProjectName(saved.name)
       lastSaved.current = projectSnapshot({
-        name: saved.name, draft, prompt, negative, seed, steps, cfg, instanceId,
+        name: saved.name, draft, prompt, negative, seed, steps, cfg, instanceId, modelBundleId, deviceId,
         backgroundPath: background?.path, seriesId, page,
       })
       setProjects(await electronStudioClient.listProjects())
@@ -550,6 +574,8 @@ export function StudioPage(): React.JSX.Element {
       steps,
       cfg,
       instanceId,
+      modelBundleId,
+      deviceId,
       seriesId,
       page,
       background,
@@ -572,6 +598,8 @@ export function StudioPage(): React.JSX.Element {
     setSteps(draftTab.steps)
     setCfg(draftTab.cfg)
     setInstanceId(draftTab.instanceId)
+    setModelBundleId(draftTab.modelBundleId)
+    setDeviceId(draftTab.deviceId)
     setStudioBackground(draftTab.background)
     setSelectedId(null)
     lastSaved.current = ''
@@ -598,6 +626,8 @@ export function StudioPage(): React.JSX.Element {
       setSteps(project.steps)
       setCfg(project.cfg)
       setInstanceId(project.instanceId ?? instances[0]?.id ?? '')
+      if (project.modelBundleId) setModelBundleId(project.modelBundleId)
+      if (project.deviceId) setDeviceId(project.deviceId)
       if (project.backgroundPath) {
         const path = project.backgroundPath
         setStudioBackground({ id: `project-bg-${project.id}`, path, name: path.split('/').pop() ?? 'background', dir: path.slice(0, Math.max(0, path.lastIndexOf('/'))), root: '', size: 0, mtime: 0, ext: path.split('.').pop() ?? '' })
@@ -606,7 +636,7 @@ export function StudioPage(): React.JSX.Element {
       }
       lastSaved.current = projectSnapshot({
         name: project.name, draft: nextDraft, prompt: project.prompt, negative: project.negative,
-        seed: project.seed, steps: project.steps, cfg: project.cfg, instanceId: project.instanceId ?? '',
+        seed: project.seed, steps: project.steps, cfg: project.cfg, instanceId: project.instanceId ?? '', modelBundleId: project.modelBundleId ?? modelBundleId, deviceId: project.deviceId ?? deviceId,
         backgroundPath: project.backgroundPath, seriesId: project.seriesId ?? '', page: project.page ?? 1,
       })
       setTimeout(() => { skipAutosave.current = false }, 600)
@@ -695,8 +725,8 @@ export function StudioPage(): React.JSX.Element {
   }
 
   async function generate(): Promise<void> {
-    if (!instanceId) {
-      toast.push('先选择一个实例', 'error')
+    if (!modelBinding) {
+      toast.push('先在模型库准备一个完整模型', 'error')
       return
     }
     if (!prompt.trim()) {
@@ -713,11 +743,13 @@ export function StudioPage(): React.JSX.Element {
       return
     }
     try {
-      const response = await fetch(`${info.url}/api/jobs`, {
+      const response = await fetch(`${info.url}/api/engine-jobs`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${info.token}` },
         body: JSON.stringify({
-          instanceId,
+          modelBinding,
+          modelName: modelBundle?.name,
+          deviceId: deviceId || undefined,
           prompt,
           negativePrompt: negative,
           width: draft.width,
@@ -735,7 +767,7 @@ export function StudioPage(): React.JSX.Element {
         const message = typeof raw === 'string' ? raw : raw?.message ?? `后端返回 ${response.status}`
         throw new Error(message)
       }
-      toast.push('已提交到 Clover 后端，正在终端运行', 'success')
+      toast.push('已提交到 MossInfer，正在终端运行', 'success')
       openWindow('terminal')
     } catch (error) {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
@@ -848,7 +880,8 @@ export function StudioPage(): React.JSX.Element {
           <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">CFG</span><Input type="number" min={0} max={20} step={0.5} value={cfg} onChange={(event) => setCfg(Number(event.target.value))} /></label>
           <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">Seed</span><Input type="number" value={seed} onChange={(event) => setSeed(Number(event.target.value))} /></label>
         </div>
-        <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">实例</span><Select value={instanceId} onChange={(event) => setInstanceId(event.target.value)} className="w-full">{instances.length === 0 ? <option value="">尚未创建实例</option> : null}{instances.map((instance: InstanceInfo) => <option key={instance.id} value={instance.id}>{instance.name} · {instance.runtimeState === 'ready' ? '就绪' : '未装依赖'}</option>)}</Select></label>
+        <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">模型</span><Select value={modelBundleId} onChange={(event) => { setModelBundleId(event.target.value); localStorage.setItem('mossstudio.modelBundleId', event.target.value) }} className="w-full">{catalog?.bundles.map((bundle) => <option key={bundle.id} value={bundle.id}>{bundle.name}</option>)}</Select></label>
+        <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">设备</span><Select value={deviceId} onChange={(event) => { setDeviceId(event.target.value); localStorage.setItem('mossstudio.deviceId', event.target.value) }} className="w-full">{devices.map((device) => <option key={device.id} value={device.id}>{device.name} · {device.kind.toUpperCase()}</option>)}</Select></label>
       </div>
     )
     if (id === 'summary') return (

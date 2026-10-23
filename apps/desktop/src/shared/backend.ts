@@ -8,7 +8,7 @@ export interface BackendInfo {
 export interface BackendRpc {
   type: 'rpc'
   id: string
-  method: 'startJob' | 'cancelJob' | 'getJob' | 'listJobs'
+  method: 'startJob' | 'startEngineJob' | 'cancelJob' | 'getJob' | 'listJobs'
   params?: unknown
 }
 

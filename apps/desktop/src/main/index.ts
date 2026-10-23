@@ -19,7 +19,7 @@ import WebSocket from 'ws'
 import { ensureMirror, listBranches, listCommits } from './services/git'
 import { createInstance, deleteInstance, listInstances, updateInstance } from './services/instances'
 import { installDeps, readRuntime, resolveTorchIndex, writeRemoteRuntime } from './services/runtimes'
-import { cancelJob, getJob, getJobLogs, onJobCompleted, startJob, startTrainingJob } from './services/supervisor'
+import { cancelJob, getJob, getJobLogs, onJobCompleted, startEngineJob, startJob, startTrainingJob } from './services/supervisor'
 import { shutdownMossInfer } from './services/mossInfer'
 import { createTrainerVersion, listTrainerVersions, startTrainerRun } from './services/trainers'
 import { listLaunchRows, removeLaunchRow, upsertLaunchRow } from './services/launchQueue'
@@ -818,6 +818,30 @@ app.whenReady().then(async () => {
       if (current.state === 'succeeded' || current.state === 'failed' || current.state === 'canceled') break
     }
     return current
+  }
+
+  if (scenario === 'mossinfer-engine-job') {
+    try {
+      const serverPath = join(app.getAppPath(), '..', '..', 'tools', 'fake-moss-server.mjs')
+      chmodSync(serverPath, 0o755)
+      setupMossInferScenario(serverPath, null)
+      const job = await startEngineJob({
+        prompt: 'engine without instance',
+        width: 256,
+        height: 256,
+        steps: 4,
+        cfg: 1,
+        seed: 9,
+        profile: 'dmd8',
+      })
+      const done = await waitForJob(job.id, 30_000)
+      console.log(JSON.stringify({ scenario: 'mossinfer-engine-job', state: done.state, engine: done.engine, instanceId: done.instanceId, outputs: done.outputs?.length ?? 0 }, null, 2))
+      app.exit(done.state === 'succeeded' && done.engine === 'mossinfer' ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
   }
 
   if (scenario === 'mossinfer-job' || scenario === 'mossinfer-cancel') {

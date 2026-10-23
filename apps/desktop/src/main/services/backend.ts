@@ -5,7 +5,7 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 import type { BackendInfo, WebAccessInfo } from '@shared/backend'
 import type { JobRecord } from '@shared/types'
 import { onEmit } from '../lib/events'
-import { cancelJob, getJob, listJobs, startJob } from './supervisor'
+import { cancelJob, getJob, listJobs, startEngineJob, startJob } from './supervisor'
 import { getCatalog } from './models'
 import { listGallery, readGalleryFile } from './gallery'
 import { listInstances } from './instances'
@@ -31,6 +31,8 @@ function handleRpc(message: Record<string, unknown>): void {
     try {
       if (method === 'startJob') {
         respond(await startJob(params as never))
+      } else if (method === 'startEngineJob') {
+        respond(await startEngineJob(params as never))
       } else if (method === 'cancelJob') {
         respond(await cancelJob(String(params['id'] ?? '')))
       } else if (method === 'getJob') {

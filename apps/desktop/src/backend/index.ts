@@ -178,6 +178,10 @@ const server = createServer(async (req, res) => {
       send(res, 200, await rpc('startJob', await readBody(req)))
       return
     }
+    if (req.method === 'POST' && url.pathname === '/api/engine-jobs') {
+      send(res, 200, await rpc('startEngineJob', await readBody(req)))
+      return
+    }
     if (req.method === 'POST' && url.pathname.endsWith('/cancel') && url.pathname.startsWith('/api/jobs/')) {
       const id = decodeURIComponent(url.pathname.slice('/api/jobs/'.length, -'/cancel'.length))
       send(res, 200, await rpc('cancelJob', { id }))
