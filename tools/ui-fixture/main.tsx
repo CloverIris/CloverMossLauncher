@@ -7,7 +7,6 @@ import { schemas } from '../../apps/desktop/src/shared/schemas'
 import type { InstanceInfo, ManagedHost, Settings } from '../../apps/desktop/src/shared/types'
 import { Field, Input, Modal, Select, Sheet, Spinner, Switch, Textarea, ToastProvider, useToast } from '../../apps/desktop/src/renderer/src/components/ui'
 import { SettingsPage } from '../../apps/desktop/src/renderer/src/pages/Settings'
-import { HomePage } from '../../apps/desktop/src/renderer/src/pages/Home'
 import { StudioPage } from '../../apps/desktop/src/renderer/src/pages/Studio'
 import { useApp } from '../../apps/desktop/src/renderer/src/store'
 import { Collapse, MotionPanel, Presence, useUiAnimationEnabled } from '../../apps/desktop/src/renderer/src/components/motion'
@@ -90,7 +89,6 @@ function Fixture(): React.JSX.Element {
       <nav className="flex gap-2">
         <button id="view-controls" onClick={() => setView('controls')}>Controls</button>
         <button id="view-settings" onClick={() => setView('settings')}>Settings</button>
-        <button id="view-home" onClick={() => setView('home')}>Home</button>
         <button id="view-devices" onClick={() => setView('devices')}>Devices</button>
         <button id="view-studio" onClick={() => {
           useApp.setState({ studioPrompt: 'Fixture prompt', catalog: fixtureCatalog as never, devices: fixtureDevices as never })
@@ -110,7 +108,7 @@ function Fixture(): React.JSX.Element {
       <output id="saved-settings" hidden>{JSON.stringify(settings)}</output>
       <output id="motion-enabled" hidden>{animate ? 'on' : 'off'}</output>
       <MotionPanel transitionKey={view} data-testid="page-motion">
-        {view === 'settings' ? <SettingsPage /> : view === 'home' ? <HomePage /> : view === 'devices' ? <ToastProvider><DevicesPage /></ToastProvider> : view === 'studio' ? <ToastProvider><StudioPage /></ToastProvider> : (
+        {view === 'settings' ? <SettingsPage /> : view === 'devices' ? <ToastProvider><DevicesPage /></ToastProvider> : view === 'studio' ? <ToastProvider><StudioPage /></ToastProvider> : (
           <div style={{ transform: 'translateX(20px)', backdropFilter: 'blur(2px)', width: 400, overflow: 'hidden' }}>
             <input id="typography" className="text-[10.5px] font-mono leading-5" />
             <button id="button-typography" className="text-[11px] font-medium">Typography</button>

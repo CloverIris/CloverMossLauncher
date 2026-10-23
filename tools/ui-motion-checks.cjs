@@ -99,8 +99,8 @@ module.exports = async function checkMotion({ evaluate, waitFor, webContents, ca
 
   await preference('on')
   for (let i = 0; i < 4; i++) {
-    await click(i % 2 ? '#view-home' : '#view-settings')
-    const title = i % 2 ? '一念落纸上，万象入画来。' : '设置'
+    await click(i % 2 ? '#view-devices' : '#view-settings')
+    const title = i % 2 ? '设备管理器' : '设置'
     await waitFor(`document.querySelector('h1')?.textContent === ${JSON.stringify(title)}`)
     assert.equal(await evaluate('document.querySelectorAll("[data-testid=page-motion]").length'), 1)
     assert.ok(await evaluate('document.querySelector("[data-testid=page-motion]").getAnimations().length <= 1'))
@@ -125,7 +125,7 @@ module.exports = async function checkMotion({ evaluate, waitFor, webContents, ca
   await preference('off')
   await evaluate('for (let i = 0; i < 6; i++) document.querySelector("#push-toast").click()')
   await waitFor('document.querySelectorAll("[role=status]").length === 3')
-  await click('#view-home')
+  await click('#view-devices')
   await waitFor('!document.querySelector("[role=status]")')
   console.log('Motion checks passed: interrupted/reversed exits, frozen content, hidden-window fallback, collapse interpolation, native modal retention, reduced motion, rapid page switching, toast expiry/bounds')
 }
