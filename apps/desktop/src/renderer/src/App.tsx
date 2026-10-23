@@ -4,7 +4,7 @@ import { Events } from '@shared/channels'
 import type { Diagnostic } from '@shared/types'
 import { onEvent } from './lib/api'
 import { useToast } from './components/ui'
-import { HashRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { HashRouter, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './components/ui'
 import { NotificationPanel } from './components/NotificationPanel'
@@ -63,6 +63,40 @@ const PAGES = [
   { to: '/settings', label: '设置', title: '设置', icon: Settings2 },
 ] as const
 
+const PAGE_COMPONENTS: Record<string, React.ComponentType> = {
+  '/studio': StudioPage,
+  '/engines': EnginePage,
+  '/models': ModelsPage,
+  '/devices': DevicesPage,
+  '/training': TrainingPage,
+  '/gallery': GalleryPage,
+  '/diagnostics': DiagnosticsPage,
+  '/settings': SettingsPage,
+}
+
+function PageHost({ active }: { active: string }): React.JSX.Element {
+  const [mounted, setMounted] = useState<Set<string>>(() => new Set([active]))
+  useEffect(() => {
+    setMounted((previous) => previous.has(active) ? previous : new Set([...previous, active]))
+  }, [active])
+  return (
+    <>
+      {[...mounted].map((key) => {
+        const Page = PAGE_COMPONENTS[key]
+        if (!Page) return null
+        const studio = key === '/studio'
+        return (
+          <div key={key} className={cn('h-full min-h-0', key !== active && 'hidden')}>
+            <div className={studio ? 'h-full w-full px-3 py-2' : 'mx-auto h-full w-full max-w-[1200px] overflow-y-auto px-6 py-5'}>
+              <ErrorBoundary><Page /></ErrorBoundary>
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
 function StudioShell(): React.JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
@@ -119,25 +153,8 @@ function StudioShell(): React.JSX.Element {
         </div>
       </header>
 
-      <main className={cn('content-surface min-h-0 min-w-0 flex-1', studio ? 'overflow-hidden' : 'overflow-y-auto')} style={backgroundStyle}>
-        <MotionPanel
-          transitionKey={location.pathname}
-          className={studio ? 'h-full w-full px-3 py-2' : 'mx-auto w-full max-w-[1200px] px-6 py-5'}
-        >
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/studio" element={<StudioPage />} />
-              <Route path="/engines" element={<EnginePage />} />
-              <Route path="/models" element={<ModelsPage />} />
-              <Route path="/devices" element={<DevicesPage />} />
-              <Route path="/training" element={<TrainingPage />} />
-              <Route path="/gallery" element={<GalleryPage />} />
-              <Route path="/diagnostics" element={<DiagnosticsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="*" element={<Navigate to="/studio" replace />} />
-            </Routes>
-          </ErrorBoundary>
-        </MotionPanel>
+      <main className="content-surface min-h-0 min-w-0 flex-1 overflow-hidden" style={backgroundStyle}>
+        <PageHost active={page.to} />
       </main>
 
       <nav className="glass-thin flex h-9 shrink-0 items-stretch border-t border-[var(--color-border-subtle)] px-1">
