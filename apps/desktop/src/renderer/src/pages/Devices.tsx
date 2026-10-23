@@ -18,6 +18,7 @@ import type { ComputeDevice, ManagedHost, SshAuthMethod } from '@shared/types'
 import { call } from '../lib/api'
 import { dateTime } from '../lib/format'
 import { openWindow } from '../lib/windows'
+import { announceTrainingHost } from '../lib/trainingHost'
 import { useApp } from '../store'
 import { Button, Card, Input, Modal, Pill, Spinner, cn, useToast } from '../components/ui'
 
@@ -465,7 +466,7 @@ export function DevicesPage(): React.JSX.Element {
             <Card className="p-4">
               <h3 className="text-[13px] font-semibold">使用入口</h3>
               <div className="mt-2 flex flex-wrap gap-2">
-                <Button tone="secondary" onClick={() => openWindow('launcher', '/training')}>
+                <Button tone="secondary" onClick={() => { announceTrainingHost(selected.id); openWindow('launcher', '/training') }}>
                   <span className="inline-flex items-center gap-1.5">
                     <GraduationCap className="size-3.5" /> 在训练中使用
                   </span>
@@ -477,8 +478,7 @@ export function DevicesPage(): React.JSX.Element {
                 </Button>
               </div>
               <p className="mt-2 text-[9.5px] leading-4 text-[var(--color-text-tertiary)]">
-                训练页的 host 选择已经来自这份库存；在启动器「实例 → 新建」里选择该 host 即可部署远端实例。
-                远端终端会话暂未开放。
+                选择后训练页会使用该 host；远端训练需要先部署对应的 SSH trainer 版本。
               </p>
             </Card>
           </div>

@@ -19,7 +19,7 @@ import WebSocket from 'ws'
 import { ensureMirror, listBranches, listCommits } from './services/git'
 import { createInstance, deleteInstance, listInstances, updateInstance } from './services/instances'
 import { installDeps, readRuntime, resolveTorchIndex, writeRemoteRuntime } from './services/runtimes'
-import { cancelJob, getJob, getJobLogs, onJobCompleted, startEngineJob, startTrainingJob } from './services/supervisor'
+import { cancelJob, getJob, getJobLogs, onJobCompleted, purgeLegacySimulationJobs, startEngineJob, startTrainingJob } from './services/supervisor'
 import { shutdownMossInfer } from './services/mossInfer'
 import { closeAllSshTerminals } from './services/sshSessions'
 import { createTrainerVersion, listTrainerVersions, startTrainerRun } from './services/trainers'
@@ -125,6 +125,7 @@ async function runSmoke(): Promise<void> {
 app.whenReady().then(async () => {
   ensureDirs(getSettings().modelsRoot)
   try { archiveLegacyInferenceData() } catch (error) { console.error('[migration]', error) }
+  try { await purgeLegacySimulationJobs() } catch (error) { console.error('[migration] simulation jobs', error) }
   onJobCompleted((job) => {
     if (job.kind === 'training' && job.state === 'succeeded') void collectTrainerArtifact(job)
   })

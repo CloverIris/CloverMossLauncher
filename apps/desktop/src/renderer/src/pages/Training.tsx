@@ -19,6 +19,7 @@ import type { BranchInfo, CommitInfo, TrainerRuntimeInfo, TrainerVersion, Traini
 import { call } from '../lib/api'
 import { dateTime } from '../lib/format'
 import { openWindow } from '../lib/windows'
+import { announceTrainingHost, getSelectedTrainingHost, TRAINING_HOST_EVENT } from '../lib/trainingHost'
 import { useApp } from '../store'
 import { Button, Card, EmptyState, IconButton, Modal, Pill, Select, Spinner, cn, useToast } from '../components/ui'
 
@@ -38,6 +39,7 @@ export function TrainingPage(): React.JSX.Element {
   const [versions, setVersions] = useState<TrainerVersion[]>([])
   const [hosts, setHosts] = useState<TrainingHost[]>([])
   const sshHosts = hosts.filter((host) => host.kind === 'ssh')
+  const [selectedHostId, setSelectedHostId] = useState(getSelectedTrainingHost)
   const [remoteHostId, setRemoteHostId] = useState('')
   const [remoteVersions, setRemoteVersions] = useState<TrainerVersion[]>([])
   const [remoteBranches, setRemoteBranches] = useState<BranchInfo[]>([])
@@ -75,8 +77,15 @@ export function TrainingPage(): React.JSX.Element {
   }, [refresh])
 
   useEffect(() => {
+    if (selectedHostId !== 'local' && sshHosts.some((host) => host.id === selectedHostId)) setRemoteHostId(selectedHostId)
     if (!remoteHostId && sshHosts[0]) setRemoteHostId(sshHosts[0].id)
-  }, [remoteHostId, sshHosts])
+  }, [remoteHostId, sshHosts, selectedHostId])
+  useEffect(() => {
+    const sync = (): void => setSelectedHostId(getSelectedTrainingHost())
+    window.addEventListener(TRAINING_HOST_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => { window.removeEventListener(TRAINING_HOST_EVENT, sync); window.removeEventListener('storage', sync) }
+  }, [])
 
   useEffect(() => {
     if (!remoteHostId) {
@@ -251,6 +260,8 @@ export function TrainingPage(): React.JSX.Element {
   }
 
   const localCuda = env?.gpu.kind === 'nvidia'
+  const selectedHost = hosts.find((host) => host.id === selectedHostId) ?? null
+  const selectedIsSsh = Boolean(selectedHost && selectedHost.kind === 'ssh')
   const selectedVersion = versions[0]
 
   return (
@@ -274,15 +285,27 @@ export function TrainingPage(): React.JSX.Element {
         </button>
       </header>
 
-      {!localCuda ? (
+      {selectedHostId === 'local' && !localCuda ? (
         <div className="flex items-start gap-2.5 rounded-[6px] border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2.5">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
           <p className="text-[10.5px] leading-5 text-[var(--color-text-secondary)]">
-            当前设备没有 CUDA（macOS/MPS 不受 KohakuMossTrainer 支持）。这里可以部署版本、创建环境和编辑配置；
-            真正训练需要 Linux/Windows + NVIDIA，或 SSH 训练主机（真实 host 尚未验收）。
+            当前选中的是本机，但本机没有 CUDA（macOS/MPS 不受 KohakuMossTrainer 支持）。
+            选择上方 SSH 训练目标主机，或改用 Linux/Windows + NVIDIA 本机；远端训练仍需先创建并安装 trainer 版本。
           </p>
         </div>
       ) : null}
+
+      <Card className="p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[12px] font-medium"><Server className="size-3.5" />训练目标主机</div>
+          <Select value={selectedHostId} onChange={(event) => { announceTrainingHost(event.target.value); setSelectedHostId(event.target.value) }} className="min-w-[220px]">
+            {(hosts.length ? hosts : [{ id: 'local', name: '本机', kind: 'local', status: 'ok' } as TrainingHost]).map((host) => <option key={host.id} value={host.id}>{host.name}{host.kind === 'local' ? ' · 本机' : ` · ${host.user}@${host.host}`}</option>)}
+          </Select>
+        </div>
+        <p className="mt-1.5 text-[9.5px] leading-4 text-[var(--color-text-tertiary)]">
+          {selectedIsSsh ? `远端训练：${selectedHost?.name} · ${selectedHost?.trainerRoot}。训练窗口会只显示该 host 的版本。` : localCuda ? '本机 CUDA 可用于训练。' : '本机没有 CUDA；选择 SSH 训练主机，或在 NVIDIA 机器运行。'}
+        </p>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card className="p-4">
@@ -389,6 +412,7 @@ export function TrainingPage(): React.JSX.Element {
                       <div className="mt-0.5 truncate text-[8.5px] text-[var(--color-text-tertiary)]">{host.remote.os} · {host.remote.gpu.split('\n')[0]}</div>
                     ) : null}
                   </div>
+                  <Button tone={selectedHostId === host.id ? 'primary' : 'ghost'} onClick={() => { announceTrainingHost(host.id); setSelectedHostId(host.id) }}>{selectedHostId === host.id ? '当前训练' : '用于训练'}</Button>
                 </div>
               )
             })}

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Events } from '@shared/channels'
@@ -825,6 +825,31 @@ export function inputJob(id: string, text: string): void {
   } catch {
     // stdin may be closed already
   }
+}
+
+/** Remove jobs created by old simulation scenarios, including their JSONL. */
+export async function purgeLegacySimulationJobs(): Promise<number> {
+  await loadJobs()
+  let removed = 0
+  for (const [id, job] of [...jobs.entries()]) {
+    let simulation = /模拟|fake/i.test(job.instanceName || '')
+    if (!simulation) {
+      try {
+        const text = await readFile(logPath(id), 'utf8')
+        simulation = /模拟模式|训练（模拟）|模拟训练|fake trainer/i.test(text)
+      } catch {
+        // no log file
+      }
+    }
+    if (!simulation) continue
+    jobs.delete(id)
+    logs.delete(id)
+    await rm(logPath(id), { force: true }).catch(() => undefined)
+    await rm(join(jobsDir(), `${id}.json`), { force: true }).catch(() => undefined)
+    removed += 1
+  }
+  if (removed) await saveJobs()
+  return removed
 }
 
 export async function listJobs(): Promise<JobRecord[]> {

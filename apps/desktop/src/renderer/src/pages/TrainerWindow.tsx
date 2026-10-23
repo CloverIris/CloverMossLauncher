@@ -1,9 +1,10 @@
 import { AlertTriangle, CheckCircle2, FolderOpen, GraduationCap, Play, Server, Stethoscope, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Ipc } from '@shared/channels'
-import type { JobRecord, TrainerVersion } from '@shared/types'
+import type { JobRecord, ManagedHost, TrainerVersion } from '@shared/types'
 import { call } from '../lib/api'
 import { openWindow } from '../lib/windows'
+import { announceTrainingHost, getSelectedTrainingHost, TRAINING_HOST_EVENT } from '../lib/trainingHost'
 import { useApp } from '../store'
 import { Button, Card, EmptyState, Field, IconButton, Input, Modal, Pill, ProgressBar, Select, Spinner, Textarea, useToast } from '../components/ui'
 
@@ -14,6 +15,8 @@ export function TrainerWindow(): React.JSX.Element {
   const env = useApp((state) => state.env)
   const jobs = useApp((state) => state.jobs)
   const [versions, setVersions] = useState<TrainerVersion[]>([])
+  const [hosts, setHosts] = useState<ManagedHost[]>([])
+  const [selectedHostId, setSelectedHostId] = useState(getSelectedTrainingHost)
   const [versionId, setVersionId] = useState('')
   const [weights, setWeights] = useState('')
   const [dataset, setDataset] = useState('')
@@ -32,20 +35,34 @@ export function TrainerWindow(): React.JSX.Element {
   const [auxOpen, setAuxOpen] = useState<'export' | 'sample' | null>(null)
 
   useEffect(() => {
-    void call<TrainerVersion[]>(Ipc.trainerAllVersions)
-      .then((rows) => {
+    void Promise.all([call<TrainerVersion[]>(Ipc.trainerAllVersions), call<ManagedHost[]>(Ipc.trainerHosts)])
+      .then(([rows, hostList]) => {
         setVersions(rows)
-        setVersionId((current) => current || rows[0]?.id || '')
+        setHosts(hostList)
+        const selected = getSelectedTrainingHost()
+        setSelectedHostId(selected)
+        setVersionId((current) => current || rows.find((item) => (item.hostId ?? 'local') === selected)?.id || rows[0]?.id || '')
       })
       .catch(() => undefined)
   }, [])
+  useEffect(() => {
+    const sync = (): void => setSelectedHostId(getSelectedTrainingHost())
+    window.addEventListener(TRAINING_HOST_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => { window.removeEventListener(TRAINING_HOST_EVENT, sync); window.removeEventListener('storage', sync) }
+  }, [])
 
-  const version = versions.find((item) => item.id === versionId)
+  const availableVersions = useMemo(() => versions.filter((item) => (item.hostId ?? 'local') === selectedHostId), [versions, selectedHostId])
+  const version = availableVersions.find((item) => item.id === versionId) ?? availableVersions[0]
   const hasCuda = env?.gpu.kind === 'nvidia'
-  const remote = Boolean(version && version.hostId !== 'local')
+  const remote = selectedHostId !== 'local'
   const ready = version?.runtimeState === 'ready'
   const canStart = Boolean(version && ready && (remote || hasCuda))
-  const trainingJob = jobs.find((job) => job.kind === 'training') ?? null
+  const trainingJob = jobs.find((job) => job.kind === 'training' && (job.hostId ?? 'local') === selectedHostId) ?? null
+
+  useEffect(() => {
+    if (availableVersions.length && !availableVersions.some((item) => item.id === versionId)) setVersionId(availableVersions[0]!.id)
+  }, [availableVersions, versionId])
 
   const configPath = `configs/user/${runName || 'moss-lora'}.py`
   const overrideArgs = overrides
@@ -181,11 +198,11 @@ export function TrainerWindow(): React.JSX.Element {
         </div>
       ) : null}
 
-      {versions.length === 0 ? (
+      {availableVersions.length === 0 ? (
         <EmptyState
           icon={<GraduationCap className="size-7" />}
           title="还没有训练版本"
-          description="先去训练页拉取 KohakuMossTrainer 并创建一个 commit 版本。"
+          description={remote ? '这个 SSH host 还没有训练版本；先去训练页拉取远端仓库并安装环境。' : '先去训练页拉取 KohakuMossTrainer 并创建一个 commit 版本。'}
           action={
             <Button tone="primary" onClick={() => openWindow('launcher', '/training')}>
               去训练页
@@ -202,9 +219,14 @@ export function TrainerWindow(): React.JSX.Element {
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2.5">
+              <Field label="训练主机">
+                <Select value={selectedHostId} onChange={(event) => { announceTrainingHost(event.target.value); setSelectedHostId(event.target.value) }}>
+                  {(hosts.length ? hosts : [{ id: 'local', name: '本机', kind: 'local', status: 'ok' } as ManagedHost]).map((host) => <option key={host.id} value={host.id}>{host.name}{host.kind === 'local' ? ' · 本机' : ' · SSH'}</option>)}
+                </Select>
+              </Field>
               <Field label="训练版本">
                 <Select value={versionId} onChange={(event) => setVersionId(event.target.value)}>
-                  {versions.map((item) => (
+                  {availableVersions.map((item) => (
                     <option key={item.id} value={item.id}>{item.name} · {item.shortCommit}{item.hostId !== 'local' ? ' · SSH' : ''}</option>
                   ))}
                 </Select>
