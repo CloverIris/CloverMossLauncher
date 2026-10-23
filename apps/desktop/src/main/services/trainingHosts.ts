@@ -90,7 +90,7 @@ export function saveTrainingHost(input: SaveTrainingHostInput): TrainingHost {
     engineRoot: input.engineRoot?.trim() || existing?.engineRoot,
     outputRoot: input.outputRoot?.trim() || existing?.outputRoot,
     modelPath: input.modelPath?.trim() || existing?.modelPath,
-    instanceRoot: input.instanceRoot?.trim() || undefined,
+    instanceRoot: input.instanceRoot?.trim() || existing?.instanceRoot,
     modelsRoot: input.modelsRoot?.trim() || undefined,
     status: 'unchecked',
     lastCheckedAt: undefined,
@@ -154,6 +154,23 @@ export function updateTrainingHostVersions(settings: Settings, id: string, versi
   const host = hosts.find((item) => item.id === id)
   if (!host) return
   host.versions = versions
+  persist()
+}
+
+export interface TrainingHostPathsPatch {
+  engineRoot?: string
+  outputRoot?: string
+  modelsRoot?: string
+  modelPath?: string
+}
+
+export function updateTrainingHostPaths(id: string, patch: TrainingHostPathsPatch): void {
+  const host = load().find((item) => item.id === id)
+  if (!host) throw new Error('主机不存在')
+  if (patch.engineRoot !== undefined) host.engineRoot = patch.engineRoot.trim() || undefined
+  if (patch.outputRoot !== undefined) host.outputRoot = patch.outputRoot.trim() || undefined
+  if (patch.modelsRoot !== undefined) host.modelsRoot = patch.modelsRoot.trim() || undefined
+  if (patch.modelPath !== undefined) host.modelPath = patch.modelPath.trim() || undefined
   persist()
 }
 

@@ -16,10 +16,11 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Ipc } from '@shared/channels'
-import type { AdapterEntry, DownloadTask, ModelEntry } from '@shared/types'
-import { call } from '../lib/api'
+import type { AdapterEntry, DownloadTask, ManagedHost, ModelEntry } from '@shared/types'
+import { Events } from '@shared/channels'
+import { call, onEvent } from '../lib/api'
 import { percent } from '../lib/format'
 import { useApp } from '../store'
 import { MotionPanel } from '../components/motion'
@@ -28,6 +29,7 @@ import {
   Card,
   EmptyState,
   IconButton,
+  Input,
   Modal,
   Pill,
   ProgressBar,
@@ -80,6 +82,27 @@ export function ModelsPage(): React.JSX.Element {
   const [pending, setPending] = useState<Entry | null>(null)
   const [removing, setRemoving] = useState<Entry | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [hosts, setHosts] = useState<ManagedHost[]>([])
+  const [remoteHostId, setRemoteHostId] = useState('')
+  const [remoteRoot, setRemoteRoot] = useState('~/.mossstudio/models')
+  const [remoteModelPath, setRemoteModelPath] = useState('')
+  const [remoteBusy, setRemoteBusy] = useState(false)
+  const remoteHost = hosts.find((host) => host.id === remoteHostId) ?? null
+  useEffect(() => {
+    const load = async (): Promise<void> => {
+      const list = (await call<ManagedHost[]>(Ipc.hostsList)).filter((host) => host.kind === 'ssh')
+      setHosts(list)
+      setRemoteHostId((current) => current || list[0]?.id || '')
+    }
+    void load().catch(() => undefined)
+    return onEvent(Events.hostsChanged, () => { void load().catch(() => undefined) })
+  }, [])
+  useEffect(() => {
+    if (!remoteHost) return
+    setRemoteRoot(remoteHost.modelsRoot ?? '~/.mossstudio/models')
+    setRemoteModelPath(remoteHost.modelPath ?? '')
+  }, [remoteHost?.id])
+
   const bundle = catalog?.bundles?.find((b) => b.id === bundleId) ?? catalog?.bundles?.[0]
   const bundleModels = bundle
     ? [...Object.values(bundle.components), bundle.support]
@@ -212,6 +235,45 @@ export function ModelsPage(): React.JSX.Element {
       )
     : []
 
+  async function saveRemotePaths(): Promise<void> {
+    if (!remoteHost) return
+    setRemoteBusy(true)
+    try {
+      await call(Ipc.hostsUpdatePaths, { id: remoteHost.id, modelsRoot: remoteRoot, modelPath: remoteModelPath })
+      toast.push('远端模型路径已保存', 'success')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteBusy(false) }
+  }
+  async function findRemoteModel(): Promise<void> {
+    if (!remoteHost) return
+    setRemoteBusy(true)
+    try {
+      const result = await call<{ found?: string; message: string }>(Ipc.remoteResourceInspect, { hostId: remoteHost.id, kind: 'models', path: remoteRoot })
+      if (result.found) { setRemoteModelPath(result.found); await call(Ipc.hostsUpdatePaths, { id: remoteHost.id, modelPath: result.found }) }
+      toast.push(result.message, result.found ? 'success' : 'info')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteBusy(false) }
+  }
+  async function prepareRemote(): Promise<void> {
+    if (!remoteHost) return
+    setRemoteBusy(true)
+    try {
+      await call(Ipc.hostsUpdatePaths, { id: remoteHost.id, modelsRoot: remoteRoot })
+      const result = await call<{ path: string; files: number }>(Ipc.enginePrepareRemoteModel, { hostId: remoteHost.id })
+      setRemoteModelPath(result.path)
+      toast.push(`远端模型已准备：${result.files} 个文件`, 'success')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteBusy(false) }
+  }
+  async function removeRemote(): Promise<void> {
+    if (!remoteHost || !remoteModelPath) return
+    if (!window.confirm(`删除远端模型目录？\n${remoteModelPath}`)) return
+    setRemoteBusy(true)
+    try {
+      await call(Ipc.remoteResourceRemove, { hostId: remoteHost.id, path: remoteModelPath })
+      setRemoteModelPath('')
+      await call(Ipc.hostsUpdatePaths, { id: remoteHost.id, modelPath: '' })
+      toast.push('远端模型目录已删除', 'success')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') } finally { setRemoteBusy(false) }
+  }
+
   return (
     <div className="model-management space-y-5 pb-4">
       <header className="flex items-start justify-between gap-4">
@@ -231,6 +293,31 @@ export function ModelsPage(): React.JSX.Element {
           </IconButton>
         </div>
       </header>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2"><HardDrive className="size-4 text-accent-300" /><h2 className="text-[14px] font-semibold">远端模型</h2></div>
+            <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">在 Linux SSH 主机选择模型缓存目录、自动查找已有模型或准备默认 SFT。</p>
+          </div>
+          <span className="text-[9px] text-[var(--color-text-tertiary)]">远端权重不占本机磁盘</span>
+        </div>
+        {hosts.length === 0 ? <p className="mt-3 text-[10px] text-[var(--color-text-tertiary)]">还没有 SSH 主机，请先在设备页添加。</p> : (
+          <div className="mt-3 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-[180px_1fr]">
+              <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">SSH 主机</span><select value={remoteHostId} onChange={(event) => setRemoteHostId(event.target.value)} className="app-input w-full">{hosts.map((host) => <option key={host.id} value={host.id}>{host.name}</option>)}</select></label>
+              <label className="space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">模型缓存根目录</span><Input value={remoteRoot} onChange={(event) => setRemoteRoot(event.target.value)} /></label>
+            </div>
+            <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">模型目录（可自动查找）</span><Input value={remoteModelPath} onChange={(event) => setRemoteModelPath(event.target.value)} placeholder="/home/.../snapshots/..." /></label>
+            <div className="flex flex-wrap gap-1.5">
+              <Button tone="secondary" onClick={() => void saveRemotePaths()} disabled={remoteBusy}>保存路径</Button>
+              <Button tone="ghost" onClick={() => void findRemoteModel()} disabled={remoteBusy}>自动查找</Button>
+              <Button tone="ghost" onClick={() => void prepareRemote()} disabled={remoteBusy}>{remoteBusy ? <Spinner className="size-3" /> : '准备默认 SFT'}</Button>
+              <Button tone="ghost" onClick={() => void removeRemote()} disabled={remoteBusy || !remoteModelPath}>删除模型目录</Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {bundle ? (
         <Card className="overflow-hidden">

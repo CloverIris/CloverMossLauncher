@@ -168,6 +168,17 @@ export const schemas = {
 
   hostSave: hostSaveSchema,
 
+  remoteResourceInspect: z.object({ hostId: z.string().min(1).max(120), kind: z.enum(['engine', 'models', 'outputs']), path: z.string().min(1).max(4096) }),
+  remoteResourceRemove: z.object({ hostId: z.string().min(1).max(120), path: z.string().min(1).max(4096) }),
+
+  hostUpdatePaths: z.object({
+    id: z.string().min(1).max(120),
+    engineRoot: z.string().max(4096).optional(),
+    outputRoot: z.string().max(4096).optional(),
+    modelsRoot: z.string().max(4096).optional(),
+    modelPath: z.string().max(4096).optional(),
+  }),
+
   hostId: z.object({ id: z.string().min(1).max(80) }),
 
   trainerRemoteHost: z.object({ hostId: z.string().min(1).max(80) }),

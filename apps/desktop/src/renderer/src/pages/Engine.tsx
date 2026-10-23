@@ -33,6 +33,7 @@ export function EnginePage(): React.JSX.Element {
     checkedAt: string
   }>>({})
   const [remoteProgress, setRemoteProgress] = useState<Record<string, EngineRemoteProgress>>({})
+  const [enginePaths, setEnginePaths] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState<string | null>(null)
   const [installingRemote, setInstallingRemote] = useState<string | null>(null)
@@ -59,9 +60,17 @@ export function EnginePage(): React.JSX.Element {
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { setGithubToken(settings?.githubToken ?? '') }, [settings?.githubToken])
   useEffect(() => onEvent<MossInferDownloadState>(Events.mossInferDownload, setDownload), [])
+  useEffect(() => onEvent<{ id: string }>(Events.hostsChanged, () => { void refresh() }), [refresh])
   useEffect(() => onEvent<EngineRemoteProgress>(Events.engineRemoteProgress, (progress) => {
     setRemoteProgress((previous) => ({ ...previous, [progress.hostId]: progress }))
   }), [])
+  useEffect(() => {
+    setEnginePaths((previous) => {
+      const next = { ...previous }
+      for (const host of hosts) if (next[host.id] === undefined) next[host.id] = host.engineRoot ?? '~/.mossstudio/engine'
+      return next
+    })
+  }, [hosts])
   useEffect(() => {
     if (!hosts.length) return
     let cancelled = false
@@ -167,9 +176,43 @@ export function EnginePage(): React.JSX.Element {
     }
   }
 
+  async function autoFindEngine(hostId: string): Promise<void> {
+    try {
+      const result = await call<{ found?: string; message: string }>(Ipc.remoteResourceInspect, { hostId, kind: 'engine', path: enginePaths[hostId] ?? '~/.mossstudio/engine' })
+      if (result.found) {
+        const root = result.found.replace(/\/bin\/moss-server$/, '')
+        setEnginePaths((previous) => ({ ...previous, [hostId]: root }))
+        await call(Ipc.hostsUpdatePaths, { id: hostId, engineRoot: root })
+        await refresh()
+      }
+      toast.push(result.message, result.found ? 'success' : 'info')
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') }
+  }
+
+  async function deleteEngine(hostId: string): Promise<void> {
+    const path = enginePaths[hostId] ?? '~/.mossstudio/engine'
+    if (!window.confirm(`删除远端引擎目录？\n${path}`)) return
+    try {
+      await call(Ipc.remoteResourceRemove, { hostId, path })
+      toast.push('远端引擎目录已删除', 'success')
+      await refresh()
+    } catch (error) { toast.push(error instanceof Error ? error.message : String(error), 'error') }
+  }
+
+  async function saveEnginePath(hostId: string): Promise<void> {
+    try {
+      await call(Ipc.hostsUpdatePaths, { id: hostId, engineRoot: enginePaths[hostId] })
+      toast.push('引擎路径已更新', 'success')
+      await refresh()
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
+    }
+  }
+
   async function installRemote(hostId: string): Promise<void> {
     setInstallingRemote(hostId)
     try {
+      await call(Ipc.hostsUpdatePaths, { id: hostId, engineRoot: enginePaths[hostId] })
       const result = await call<{ version: string; path: string; asset: string }>(Ipc.engineInstallRemote, { hostId })
       toast.push(`远端引擎 ${result.version} 已安装`, 'success')
       await refresh()
@@ -347,6 +390,13 @@ export function EnginePage(): React.JSX.Element {
                       {status?.error ? ` · ${status.error}` : ''}
                     </p>
                     {host.modelPath ? <p className="mt-0.5 truncate font-mono text-[8px] text-[var(--color-text-tertiary)]">模型：{host.modelPath}</p> : null}
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <span className="shrink-0 text-[8.5px] text-[var(--color-text-tertiary)]">引擎目录</span>
+                      <Input value={enginePaths[host.id] ?? ''} onChange={(event) => setEnginePaths((previous) => ({ ...previous, [host.id]: event.target.value }))} className="h-6 min-w-0 flex-1 font-mono text-[8.5px]" />
+                      <Button tone="ghost" onClick={() => void saveEnginePath(host.id)}>保存路径</Button>
+                      <Button tone="ghost" onClick={() => void autoFindEngine(host.id)}>自动查找</Button>
+                      <Button tone="ghost" onClick={() => void deleteEngine(host.id)}>删除</Button>
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                     <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>

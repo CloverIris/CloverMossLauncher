@@ -14,7 +14,7 @@ module.exports = async function checkSsh({ evaluate, waitFor, capture }) {
     const geometry = await evaluate(`(() => {
       const element = ${input(label)};
       const bounds = element.getBoundingClientRect();
-      const reference = ${input('模型缓存根目录')}.getBoundingClientRect();
+      const reference = ${input('模型 / 缓存根目录')}.getBoundingClientRect();
       const normal = ${input('Host')}.getBoundingClientRect();
       const style = getComputedStyle(element);
       const ring = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);

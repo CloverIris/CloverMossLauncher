@@ -34,7 +34,6 @@ interface HostForm {
   trainerRoot: string
   engineRoot: string
   outputRoot: string
-  instanceRoot: string
   modelsRoot: string
 }
 
@@ -50,7 +49,6 @@ const EMPTY_FORM: HostForm = {
   trainerRoot: '~/.mossstudio/trainer',
   engineRoot: '~/.mossstudio/engine',
   outputRoot: '~/.mossstudio/outputs',
-  instanceRoot: '~/.mossstudio/instances',
   modelsRoot: '~/.mossstudio/models',
 }
 
@@ -163,7 +161,6 @@ export function DevicesPage(): React.JSX.Element {
       trainerRoot: host.trainerRoot,
       engineRoot: host.engineRoot ?? '~/.mossstudio/engine',
       outputRoot: host.outputRoot ?? '~/.mossstudio/outputs',
-      instanceRoot: host.instanceRoot ?? '~/.mossstudio/instances',
       modelsRoot: host.modelsRoot ?? '~/.mossstudio/models',
     })
     setHostOpen(true)
@@ -192,7 +189,6 @@ export function DevicesPage(): React.JSX.Element {
         trainerRoot: form.trainerRoot.trim(),
         engineRoot: form.engineRoot.trim() || undefined,
         outputRoot: form.outputRoot.trim() || undefined,
-        instanceRoot: form.instanceRoot.trim() || undefined,
         modelsRoot: form.modelsRoot.trim() || undefined,
       })
       setHosts((current) => {
@@ -626,7 +622,7 @@ export function DevicesPage(): React.JSX.Element {
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">实例根目录（推理）</span>
+              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">推理引擎目录</span>
               <Input
                 value={form.engineRoot}
                 onChange={(event) => setForm({ ...form, engineRoot: event.target.value })}
@@ -639,15 +635,8 @@ export function DevicesPage(): React.JSX.Element {
                 onChange={(event) => setForm({ ...form, outputRoot: event.target.value })}
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">远端实例目录</span>
-              <Input
-                value={form.instanceRoot}
-                onChange={(event) => setForm({ ...form, instanceRoot: event.target.value })}
-              />
-            </label>
             <label className="block sm:col-span-2">
-              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">模型缓存根目录（远端）</span>
+              <span className="mb-1 block text-[10px] text-[var(--color-text-secondary)]">模型 / 缓存根目录（远端）</span>
               <Input
                 value={form.modelsRoot}
                 onChange={(event) => setForm({ ...form, modelsRoot: event.target.value })}

@@ -31,8 +31,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GalleryItem, JobRecord, ManagedHost, ProjectDocument, ProjectSummary } from '@shared/types'
 import type { BackendInfo } from '@shared/backend'
-import { Ipc } from '@shared/channels'
-import { call } from '../lib/api'
+import { Events, Ipc } from '@shared/channels'
+import { call, onEvent } from '../lib/api'
 import { electronStudioClient } from '../lib/studioClient'
 import { openWindow } from '../lib/windows'
 import { cloverUrl } from '../lib/clover'
@@ -258,6 +258,7 @@ export function StudioPage(): React.JSX.Element {
     return () => { cancelled = true }
   }, [])
   const env = useApp((state) => state.env)
+  useEffect(() => onEvent<{ id: string }>(Events.hostsChanged, () => { void call<ManagedHost[]>(Ipc.hostsList).then((list) => setHosts(list.filter((host) => host.kind === 'ssh'))).catch(() => undefined) }), [])
 
   const [prompt, setPrompt] = useState(storedPrompt)
   const [negative, setNegative] = useState('nsfw, worst quality, bad anatomy, watermark, jpeg artifact')

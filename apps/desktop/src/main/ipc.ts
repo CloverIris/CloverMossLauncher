@@ -27,6 +27,7 @@ import { detectSystemCuda } from './services/systemCuda'
 import { installMossInferCudaLibs } from './services/cudaWheels'
 import { prepareRemoteDefaultModel } from './services/remoteModels'
 import { installRemoteEngine } from './services/remoteEngineInstall'
+import { inspectRemoteResource, removeRemoteResource } from './services/remoteResources'
 import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
 import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
@@ -55,6 +56,7 @@ import {
   saveTrainingHost,
   testManagedHost,
   testTrainingHost,
+  updateTrainingHostPaths,
 } from './services/trainingHosts'
 import {
   remoteBranches,
@@ -166,6 +168,25 @@ export function registerIpc(): void {
     removeTrainingHost(id)
     emit(Events.hostsChanged, { id })
     return true
+  })
+
+  handle(Ipc.remoteResourceInspect, schemas.remoteResourceInspect, async ({ hostId, kind, path }) => {
+    const host = getTrainingHost(getSettings(), hostId)
+    if (!host) throw new Error('主机不存在')
+    return inspectRemoteResource(host, kind, path)
+  })
+
+  handle(Ipc.remoteResourceRemove, schemas.remoteResourceRemove, async ({ hostId, path }) => {
+    const host = getTrainingHost(getSettings(), hostId)
+    if (!host) throw new Error('主机不存在')
+    await removeRemoteResource(host, path)
+    return true
+  })
+
+  handle(Ipc.hostsUpdatePaths, schemas.hostUpdatePaths, ({ id, ...patch }) => {
+    updateTrainingHostPaths(id, patch)
+    emit(Events.hostsChanged, { id })
+    return listManagedHosts(getSettings()).find((host) => host.id === id) ?? null
   })
 
   handle(Ipc.hostsTest, schemas.hostId, async ({ id }) => {
