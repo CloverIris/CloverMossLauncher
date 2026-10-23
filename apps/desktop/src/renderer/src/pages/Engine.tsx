@@ -22,6 +22,7 @@ export function EnginePage(): React.JSX.Element {
   const [remote, setRemote] = useState<Record<string, { available: boolean; path: string; error?: string }>>({})
   const [busy, setBusy] = useState(false)
   const [preparing, setPreparing] = useState<string | null>(null)
+  const [installingRemote, setInstallingRemote] = useState<string | null>(null)
   const [channel, setChannel] = useState<'stable' | 'dev'>('stable')
   const [variant, setVariant] = useState<'bundled' | 'system-cuda'>('bundled')
 
@@ -79,6 +80,19 @@ export function EnginePage(): React.JSX.Element {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
       setPreparing(null)
+    }
+  }
+
+  async function installRemote(hostId: string): Promise<void> {
+    setInstallingRemote(hostId)
+    try {
+      const result = await call<{ version: string; path: string; asset: string }>(Ipc.engineInstallRemote, { hostId })
+      toast.push(`远端引擎 ${result.version} 已安装`, 'success')
+      await refresh()
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      setInstallingRemote(null)
     }
   }
 
@@ -213,6 +227,7 @@ export function EnginePage(): React.JSX.Element {
                 <div className="flex shrink-0 items-center gap-1.5">
                   {status ? <Pill tone={status.available ? 'accent' : 'red'}>{status.available ? 'ready' : 'missing'}</Pill> : null}
                   <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
+                  <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>{installingRemote === host.id ? <Spinner className="size-3" /> : '安装引擎'}</Button>
                   <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
                 </div>
               </div>

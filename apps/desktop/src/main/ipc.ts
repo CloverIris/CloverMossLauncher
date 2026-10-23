@@ -43,6 +43,7 @@ import { chat, listConversations, listProviders, removeConversation, removeProvi
 import { gbcStatus, runGbc } from './services/gbc'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
 import { prepareRemoteDefaultModel } from './services/remoteModels'
+import { installRemoteEngine } from './services/remoteEngineInstall'
 import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
 import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
@@ -305,6 +306,12 @@ export function registerIpc(): void {
   handle(Ipc.engineProbe, null, () => probeLocalEngine())
 
   handle(Ipc.engineRemoteStatus, schemas.engineRemoteStatus, ({ hostId }) => remoteEngineInfo(hostId))
+
+  handle(Ipc.engineInstallRemote, schemas.engineInstallRemote, async ({ hostId }) => {
+    const host = getTrainingHost(getSettings(), hostId)
+    if (!host) throw new Error('主机不存在')
+    return installRemoteEngine(host)
+  })
 
   handle(Ipc.enginePrepareRemoteModel, schemas.enginePrepareRemoteModel, async ({ hostId, repo }) => {
     const host = getTrainingHost(getSettings(), hostId)
