@@ -10,7 +10,6 @@ import type {
   InstanceInfo,
   JobLogLine,
   JobRecord,
-  JobStartInput,
   LaunchCase,
   LaunchDevice,
   LaunchRow,
@@ -94,7 +93,6 @@ interface AppStore {
   cancelDownload: (taskId: string) => Promise<void>
   deleteModel: (kind: 'model' | 'adapter', id: string) => Promise<void>
   refreshJobs: () => Promise<void>
-  startJob: (input: JobStartInput) => Promise<JobRecord>
   cancelJob: (id: string) => Promise<void>
   sendJobInput: (id: string, text: string) => Promise<void>
   setActiveJob: (id: string | null) => void
@@ -532,16 +530,6 @@ export const useApp = create<AppStore>((set, get) => {
       } catch {
         // keep previous
       }
-    },
-
-    async startJob(input) {
-      const job = await call<JobRecord>(Ipc.jobStart, input)
-      set((state) => ({
-        jobs: upsertJob(state.jobs, job),
-        activeJobId: job.id,
-        jobLogs: { ...state.jobLogs, [job.id]: [] },
-      }))
-      return job
     },
 
     async cancelJob(id) {

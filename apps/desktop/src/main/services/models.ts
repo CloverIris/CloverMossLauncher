@@ -26,7 +26,6 @@ import { emit } from '../lib/events'
 import { paths } from '../lib/paths'
 import { getLastNetwork } from './network'
 import { localReleaseDir } from './updates'
-import { listInstances } from './instances'
 import { listJobs } from './supervisor'
 import packagedCatalog from '../../../../../release/models.json'
 import {
@@ -850,12 +849,6 @@ export async function deleteModel(
         ? catalog.models.find((m) => m.id === id)
         : catalog.adapters.find((m) => m.id === id)
     if (!entry) return
-    const users = (await listInstances()).filter((instance) =>
-      kind === 'model'
-        ? instance.models.includes(id) || Object.values(instance.modelBinding ?? {}).includes(id)
-        : instance.adapters.includes(id),
-    )
-    if (users.length) throw new Error(`请先解除实例绑定：${users.map((i) => i.name).join('、')}`)
     if ((await listJobs()).some((job) => ['starting', 'running', 'canceling'].includes(job.state)))
       throw new Error('有任务正在运行，请结束任务后再删除模型文件')
     if (kind === 'adapter') {

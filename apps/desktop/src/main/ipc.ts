@@ -6,29 +6,10 @@ import type { IpcResult } from '@shared/types'
 import { emit } from './lib/events'
 import { ensureDirs, paths } from './lib/paths'
 import { scanEnvironment } from './services/env'
-import {
-  createInstance,
-  deleteInstance,
-  getInstance,
-  isolateInstance,
-  listInstances,
-  updateAdapterBindings,
-  updateModelBinding,
-  updateInstance,
-} from './services/instances'
-import {
-  ensureRemoteMirror,
-  installRemoteRuntime as installRemoteMossRuntime,
-  remoteBranches as remoteMossBranches,
-  remoteCommits as remoteMossCommits,
-  remoteRoots,
-} from './services/remoteInstances'
 import { cancelDownload, getCatalog, deleteModel, importModelFolder, listDownloads, pauseDownload, startDownload, installBundle } from './services/models'
 import { galleryDetail, listGallery, revealInFolder } from './services/gallery'
-import { cancelJob, getJob, getJobLogs, inputJob, listJobs, startJob } from './services/supervisor'
+import { cancelJob, getJob, getJobLogs, inputJob, listJobs } from './services/supervisor'
 import { clearDiagnostics, dismissDiagnostic, listDiagnostics } from './services/diagnostics'
-import { ensureMirror, listBranches, listCommits } from './services/git'
-import { installDeps, readRuntime } from './services/runtimes'
 import { getSettings, updateSettings } from './services/settings'
 import { checkUpdates, dismissAnnouncement } from './services/updates'
 import { cancelUpdateDownload, downloadUpdate } from './services/updateDownload'
@@ -49,7 +30,6 @@ import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
 import { openWindow } from './windows'
 import { listDevices } from './services/devices'
-import { listCases, removeCase, saveCase } from './services/cases'
 import { getOnboardingStatus } from './services/onboarding'
 import {
   createTrainerVersion,
@@ -192,15 +172,6 @@ export function registerIpc(): void {
     return host
   })
 
-  handle(Ipc.casesList, null, () => listCases())
-
-  handle(Ipc.casesSave, schemas.caseSave, (input) => saveCase(input))
-
-  handle(Ipc.casesRemove, schemas.caseRemove, ({ id }) => {
-    removeCase(id)
-    return true
-  })
-
   handle(Ipc.launchQueueList, null, () => listLaunchRows())
 
   handle(Ipc.launchQueueUpsert, schemas.launchRow, (row) => upsertLaunchRow(row))
@@ -334,16 +305,6 @@ export function registerIpc(): void {
     return true
   })
 
-  handle(Ipc.gitBranches, schemas.gitBranches, async (input) => {
-    const settings = getSettings()
-    await ensureMirror(settings, input?.source)
-    return listBranches(input?.source)
-  })
-
-  handle(Ipc.gitCommits, schemas.gitCommits, ({ branch, limit, source }) =>
-    listCommits(branch, limit, source),
-  )
-
   handle(Ipc.projectsList, null, () => listProjects())
 
   handle(Ipc.projectGet, schemas.projectId, ({ id }) => getProject(id))
@@ -353,74 +314,6 @@ export function registerIpc(): void {
   handle(Ipc.projectDelete, schemas.projectId, ({ id }) => {
     deleteProject(id)
     return true
-  })
-
-  handle(Ipc.instancesList, null, () => listInstances())
-
-  handle(Ipc.instanceCreate, schemas.instanceCreate, (input) => createInstance(input, getSettings()))
-
-  handle(Ipc.instanceRemoteBranches, schemas.instanceRemoteHost, async ({ hostId, source }) => {
-    const roots = await remoteRoots(getSettings(), hostId)
-    await ensureRemoteMirror(roots, source)
-    return remoteMossBranches(roots, source)
-  })
-
-  handle(Ipc.instanceRemoteCommits, schemas.instanceRemoteCommits, async ({ hostId, branch, limit, source }) => {
-    const roots = await remoteRoots(getSettings(), hostId)
-    await ensureRemoteMirror(roots, source)
-    return remoteMossCommits(roots, branch, limit, source)
-  })
-
-  handle(Ipc.instanceDelete, schemas.instanceDelete, ({ id, keepOutputs }) =>
-    deleteInstance(id, keepOutputs, getSettings()),
-  )
-
-  handle(Ipc.instanceUpdate, schemas.instanceUpdate, ({ id, commit }) =>
-    updateInstance(id, commit, getSettings()),
-  )
-
-  handle(Ipc.instanceAdapters, schemas.instanceAdapters, ({ id, bindings }) => updateAdapterBindings(id, bindings))
-
-  handle(Ipc.instanceOpen, schemas.instanceOpen, async ({ id }) => {
-    const instance = await getInstance(id)
-    if (!instance) throw new Error('实例不存在')
-    if (instance.placement.kind === 'ssh') {
-      throw new Error('远端实例目录在 SSH host 上；请通过设备管理器/终端访问')
-    }
-    return shell.openPath(instance.path)
-  })
-
-  handle(Ipc.runtimeInstall, schemas.runtimeInstall, async ({ instanceId }) => {
-    const instance = await getInstance(instanceId)
-    if (!instance) throw new Error('实例不存在')
-    const logger = (line: string, stream: 'stdout' | 'stderr' = 'stdout'): void => {
-      emit(Events.runtimeLog, {
-        runtimeId: instance.runtimeId,
-        instanceId,
-        line,
-        stream,
-        at: new Date().toISOString(),
-      })
-    }
-    if (instance.placement.kind === 'ssh') {
-      const runtime = await readRuntime(instance.runtimeId)
-      if (!runtime) throw new Error('远端运行时记录不存在')
-      const roots = await remoteRoots(getSettings(), instance.placement.hostId)
-      const next = await installRemoteMossRuntime(roots, runtime, getSettings(), logger)
-      emit(Events.instancesChanged, { id: instanceId })
-      return next
-    }
-    const runtime = await installDeps(instance.runtimeId, getSettings(), logger, instance.path)
-    emit(Events.instancesChanged, { id: instanceId })
-    return runtime
-  })
-
-  handle(Ipc.runtimeIsolate, schemas.instanceId, ({ id }) => isolateInstance(id, getSettings()))
-
-  handle(Ipc.runtimeState, schemas.instanceId, async ({ id }) => {
-    const instance = await getInstance(id)
-    if (!instance) return null
-    return readRuntime(instance.runtimeId)
   })
 
   handle(Ipc.modelsCatalog, null, () => getCatalog(getSettings(), true))
@@ -441,7 +334,6 @@ export function registerIpc(): void {
   })
 
   handle(Ipc.modelBundleInstall, schemas.modelBundle, ({ id }) => installBundle(id, getSettings()))
-  handle(Ipc.instanceModelBinding, schemas.instanceModelBinding, ({ id, binding }) => updateModelBinding(id, binding, getSettings()))
 
   handle(Ipc.modelDownload, schemas.download, ({ kind, id }) =>
     startDownload(kind, id, getSettings()),
@@ -463,8 +355,6 @@ export function registerIpc(): void {
   })
 
   handle(Ipc.downloadsList, null, () => listDownloads())
-
-  handle(Ipc.jobStart, schemas.jobStart, (input) => startJob(input))
 
   handle(Ipc.jobCancel, schemas.jobId, ({ id }) => cancelJob(id))
 

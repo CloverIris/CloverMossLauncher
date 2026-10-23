@@ -4,7 +4,6 @@ import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { app } from 'electron'
 import { Events } from '@shared/channels'
 import type {
   JobLogLine,
@@ -17,14 +16,10 @@ import type {
 } from '@shared/types'
 import { emit } from '../lib/events'
 import { paths } from '../lib/paths'
-import { getInstance } from './instances'
 import { prepareModelBundle } from './modelBundles'
 import { legacyModelReady, resolveLegacyModelPath } from './modelReadiness'
-import { resolveAdapterFile } from './models'
 import { cancelMossInferJob, resolveServerPath, restartMossInfer, runMossInferJob } from './mossInfer'
-import { readRuntime, venvPython } from './runtimes'
 import { getSettings } from './settings'
-import { remoteModelReady, remoteRoots } from './remoteInstances'
 import { getTrainingHost } from './trainingHosts'
 import { runRemoteEngineJob } from './remoteEngine'
 import {
@@ -175,13 +170,7 @@ function recordError(job: JobRecord, raw: string, rule = matchRule(raw)): void {
 }
 
 
-function runnerScript(): string {
-  const candidates = [
-    join(app.getAppPath(), '..', '..', 'runner', 'runner.py'),
-    join(process.resourcesPath, 'runner', 'runner.py'),
-  ]
-  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!
-}
+
 
 function envFor(job: JobRecord): NodeJS.ProcessEnv {
   return {
@@ -440,323 +429,6 @@ function handleLine(job: JobRecord, runningJob: RunningJob, stream: 'stdout' | '
   }
 }
 
-export interface StartJobInput {
-  instanceId: string
-  caseId?: string
-  caseName?: string
-  workspace?: WorkspaceKind
-  deviceId?: string
-  kind?: 'inference' | 'training'
-  trainerVersionId?: string
-  prompt: string
-  negativePrompt?: string
-  width: number
-  height: number
-  steps: number
-  cfg: number
-  seed: number
-  profile?: 'base' | 'dmd8'
-  mode?: 'runner' | 'simulate'
-}
-
-export async function startJob(input: StartJobInput): Promise<JobRecord> {
-  await loadJobs()
-  const instance = await getInstance(input.instanceId)
-  if (!instance) throw new Error('实例不存在')
-  const mode = input.mode ?? 'runner'
-  const workspace = 'clover' as const
-  const remote = instance.placement.kind === 'ssh' ? instance.placement : null
-  const settings = getSettings()
-  const useMossInfer = mode === 'runner' && !remote && settings.inferenceBackend === 'mossinfer'
-  const runtime = await readRuntime(instance.runtimeId)
-  if (mode !== 'simulate' && !useMossInfer && (!runtime || runtime.state !== 'ready')) {
-    pushDiagnostic({
-      jobId: undefined,
-      ruleId: 'E_RUNTIME',
-      severity: 'error',
-      title: '运行时未就绪',
-      explain: remote
-        ? '这个远端实例的 venv 还没有安装依赖。先到实例详情里点“安装依赖”。'
-        : '这个实例还没有安装 Python 依赖。先到实例详情里点“安装依赖”。',
-      solutions: [{ label: '打开实例', action: 'open_instances' }],
-      raw: 'runtime not ready',
-      signature: `E_RUNTIME:${instance.id}`,
-      toast: false,
-    })
-    throw new Error('运行时尚未安装依赖，请先在实例详情中安装依赖')
-  }
-
-  let bundlePath: string | undefined
-  let modelSnapshot: unknown
-  if (mode !== 'simulate' && !remote && instance.modelBinding) {
-    bundlePath = await prepareModelBundle(instance.modelBinding, settings)
-    modelSnapshot = JSON.parse(await readFile(join(bundlePath, 'clover_model.json'), 'utf8'))
-  }
-
-  let mossModelPath: string | undefined
-  if (mode !== 'simulate' && !bundlePath) {
-    const modelDir = join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT')
-    const modelAvailable = remote
-      ? await remoteModelReady(await remoteRoots(settings, remote.hostId))
-      : await legacyModelReady(modelDir)
-    if (!modelAvailable) {
-      pushDiagnostic({
-        jobId: undefined,
-        ruleId: 'E_MODEL',
-        severity: 'error',
-        title: '还没有下载 MOSS-Image 权重',
-        explain: remote
-          ? '远端模型缓存里没有默认 SFT。请先在远端准备好模型。'
-          : '所选模型不完整。请在模型库补齐组件并绑定到实例，或指定一个完整的本地模型目录。',
-        solutions: [{ label: '打开模型库', action: 'open_models' }],
-        raw: 'model missing',
-        signature: 'E_MODEL:moss-sft',
-        toast: false,
-      })
-      throw new Error('模型权重尚未就绪，请在模型库补齐组件并在实例详情保存绑定')
-    }
-  }
-  if (useMossInfer) {
-    mossModelPath =
-      bundlePath ??
-      (await resolveLegacyModelPath(
-        join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'),
-      )) ??
-      undefined
-    if (!mossModelPath) {
-      // The availability check above passed, so this is unreachable in practice.
-      throw new Error('模型权重尚未就绪，请在模型库补齐组件并在实例详情保存绑定')
-    }
-    if (!resolveServerPath(settings)) {
-      pushDiagnostic({
-        jobId: undefined,
-        ruleId: 'E_ENGINE',
-        severity: 'error',
-        title: '未找到 moss-server',
-        explain: '请在设置中配置 mossInferServerPath，或设置 MOSS_SERVER 环境变量。',
-        solutions: [{ label: '打开设置', action: 'open_settings' }],
-        raw: 'moss-server not found',
-        signature: 'E_ENGINE:no-server',
-        toast: false,
-      })
-      throw new Error('未找到 moss-server 可执行文件，请在设置中配置 mossInferServerPath')
-    }
-  }
-
-  const python = runtime
-    ? remote
-      ? runtime.python
-      : venvPython(runtime.path)
-    : process.platform === 'win32'
-      ? 'python'
-      : 'python3'
-  if (!useMossInfer && !remote && !existsSync(python) && mode !== 'simulate') {
-    throw new Error('找不到运行时 Python，请修复运行时')
-  }
-
-  const loras: Array<{ path: string; strength: number }> = []
-  if (useMossInfer && instance.adapterBindings?.length) {
-    for (const binding of instance.adapterBindings.filter((item) => item.enabled)) {
-      const file = await resolveAdapterFile(settings, binding.id)
-      if (file) loras.push({ path: file, strength: binding.strength ?? 1 })
-    }
-  }
-
-  const params: JobParams = {
-    prompt: input.prompt,
-    negativePrompt: input.negativePrompt ?? '',
-    width: input.width,
-    height: input.height,
-    steps: input.steps,
-    cfg: input.cfg,
-    seed: input.seed,
-    profile: input.profile ?? 'base',
-  }
-  const job: JobRecord = {
-    id: `job-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`,
-    instanceId: instance.id,
-    instanceName: instance.name,
-    caseId: input.caseId,
-    caseName: input.caseName,
-    workspace: 'clover',
-    modelSnapshot,
-    hostId: remote?.hostId,
-    deviceId: input.deviceId,
-    kind: input.kind ?? 'inference',
-    mode,
-    ...(mode !== 'simulate' ? { engine: useMossInfer ? ('mossinfer' as const) : ('runner' as const) } : {}),
-    state: 'starting',
-    stage: 'idle',
-    params,
-    progress: { stage: 'idle', current: 0, total: params.steps, percent: 0 },
-    startedAt: new Date().toISOString(),
-  }
-  job.logPath = logPath(job.id)
-  jobs.set(job.id, job)
-  logs.set(job.id, [])
-  seqs.set(job.id, 0)
-  emit(Events.job, snapshot(job))
-
-  const jobFile = join(jobsDir(), `${job.id}.json`)
-  await mkdir(jobsDir(), { recursive: true })
-  const outputDir = join(instance.path, 'outputs')
-  await writeFile(
-    jobFile,
-    JSON.stringify(
-      {
-        job_id: job.id,
-        instance_id: instance.id,
-        model: bundlePath ? { path: bundlePath, snapshot: modelSnapshot } : { repo: DEFAULT_MODEL },
-        prompt: params.prompt,
-        negative_prompt: params.negativePrompt,
-        width: params.width,
-        height: params.height,
-        steps: params.steps,
-        guidance_scale: params.cfg,
-        seed: params.seed,
-        batch: 1,
-        profile: params.profile,
-        adapters: params.adapters ?? [],
-        output_dir: outputDir,
-        device: input.deviceId ?? (process.platform === 'darwin' ? 'mps' : 'cpu'),
-        dtype: 'float16',
-        options: { vae_tiling: true, attention_slicing: false },
-      },
-      null,
-      2,
-    ),
-    'utf8',
-  )
-
-  if (useMossInfer) {
-    const cudaOrdinal = input.deviceId?.startsWith('cuda:') ? Number(input.deviceId.slice(5)) : -1
-    const readyTimer = setTimeout(() => {
-      if (job.state === 'starting') {
-        pushDiagnostic({
-          jobId: job.id,
-          ruleId: 'E_TIMEOUT',
-          severity: 'error',
-          title: '启动超时',
-          explain: 'moss-server 在 180 秒内没有就绪，通常是引擎启动或模型加载失败。',
-          solutions: [{ label: '查看日志', action: 'open_log' }, { label: '打开设置', action: 'open_settings' }],
-          raw: 'ready timeout',
-          signature: `E_TIMEOUT:${job.id}`,
-        })
-        update(job, { state: 'failed', error: { code: 'E_TIMEOUT', message: '启动超时' } })
-        void restartMossInfer()
-      }
-    }, 180_000)
-    const runningJob: RunningJob = {
-      child: undefined,
-      out: new LineSplitter(),
-      err: new LineSplitter(),
-      readyTimer,
-      lastLines: [],
-      cancelRequested: false,
-    }
-    running.set(job.id, runningJob)
-    const output = join(outputDir, `${job.id}-1.png`)
-    void runMossInferJob(
-      job,
-      params,
-      { model: mossModelPath!, device: cudaOrdinal, loras, output, settings },
-      {
-        event: (payload) => handleRunnerEvent(job, runningJob, JSON.stringify(payload)),
-        stderr: (line) => appendLog(job, 'stderr', line, runningJob),
-        done: (code) => finish(job, runningJob, code),
-      },
-    ).catch((error: unknown) => {
-      handleRunnerEvent(
-        job,
-        runningJob,
-        JSON.stringify({
-          type: 'error',
-          code: 'E_ENGINE',
-          message: String(error instanceof Error ? error.message : error),
-          fatal: true,
-        }),
-      )
-      finish(job, runningJob, -1)
-    })
-    return snapshot(job)
-  }
-
-  let command = ''
-  let args: string[] = []
-  try {
-    if (remote) {
-      throw new Error('远端 runner 尚未接入；MossStudio 当前仅支持本机生成')
-    }
-    command = python
-    args = [runnerScript(), '--job', jobFile, ...(mode === 'simulate' ? ['--simulate'] : [])]
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    update(job, { state: 'failed', error: { code: 'E_REMOTE', message } })
-    throw error
-  }
-
-  let child: ChildProcessWithoutNullStreams
-  try {
-    child = spawn(command, args, {
-      cwd: remote ? app.getAppPath() : instance.path,
-      env: { ...process.env, ...envFor(job) },
-      detached: process.platform !== 'win32',
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    update(job, { state: 'failed', error: { code: 'E_SPAWN', message } })
-    throw error
-  }
-
-  const readyTimer = setTimeout(() => {
-    if (job.state === 'starting') {
-      pushDiagnostic({
-        jobId: job.id,
-        ruleId: 'E_TIMEOUT',
-        severity: 'error',
-        title: '启动超时',
-        explain: 'runner 在 180 秒内没有就绪，通常是权重加载失败或依赖缺失。',
-        solutions: [{ label: '查看日志', action: 'open_log' }, { label: '打开实例', action: 'open_settings' }],
-        raw: 'ready timeout',
-        signature: `E_TIMEOUT:${job.id}`,
-      })
-      update(job, { state: 'failed', error: { code: 'E_TIMEOUT', message: '启动超时' } })
-      killTree(child)
-    }
-  }, 180_000)
-
-  const runningJob: RunningJob = {
-    child,
-    out: new LineSplitter(),
-    err: new LineSplitter(),
-    readyTimer,
-    lastLines: [],
-    cancelRequested: false,
-  }
-  running.set(job.id, runningJob)
-  update(job, { pid: child.pid ?? undefined })
-
-  child.stdout.setEncoding('utf8')
-  child.stderr.setEncoding('utf8')
-  child.stdout.on('data', (chunk: string) => {
-    for (const line of runningJob.out.push(chunk)) handleLine(job, runningJob, 'stdout', line)
-  })
-  child.stderr.on('data', (chunk: string) => {
-    for (const line of runningJob.err.push(chunk)) handleLine(job, runningJob, 'stderr', line)
-  })
-  child.on('error', (error) => {
-    appendLog(job, 'system', String(error), runningJob)
-    update(job, { state: 'failed', error: { code: 'E_SPAWN', message: String(error) } })
-    finish(job, runningJob, -1)
-  })
-  child.on('close', (code) => finish(job, runningJob, code))
-
-  return snapshot(job)
-}
-
-
 export interface StartEngineJobInput {
   modelBinding?: ModelBinding
   modelName?: string
@@ -950,6 +622,7 @@ export async function startEngineJob(input: StartEngineJobInput): Promise<JobRec
   })
   return snapshot(job)
 }
+
 
 export interface StartTrainingJobInput {
   versionId: string

@@ -10,7 +10,7 @@ import { allRemoteVersions, remoteSetup } from './remoteTrainer'
 import { getTrainingHost } from './trainingHosts'
 import { checkBareMirror } from './gitHealth'
 import { posixQuote, sshArgs, sshCommand, sshEnv, sshExec } from './ssh'
-import { hasUv, parseDepsFromPyproject, pickPython, venvPython } from './runtimes'
+import { hasUv, parseTrainerDeps, pickPython, venvPython } from './trainerEnv'
 import {
   createTrainerWorktree,
   ensureTrainerMirror,
@@ -177,7 +177,7 @@ export async function ensureTrainerRuntime(settings: Settings, versionId: string
     const existing = await readRuntime(settings, version.runtimeId)
     if (existing && existsSync(venvPython(existing.path))) return existing
   }
-  const deps = parseDepsFromPyproject(version.path)
+  const deps = parseTrainerDeps(version.path)
   const python = await pickPython(settings)
   const lockHash = hash(JSON.stringify({ python: python.version, platform: process.platform, arch: process.arch, deps: [...deps].sort() }))
   const runtimeId = `tr-py${python.version.replace(/\./g, '')}-${lockHash}`

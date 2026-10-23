@@ -19,7 +19,7 @@ import WebSocket from 'ws'
 import { ensureMirror, listBranches, listCommits } from './services/git'
 import { createInstance, deleteInstance, listInstances, updateInstance } from './services/instances'
 import { installDeps, readRuntime, resolveTorchIndex, writeRemoteRuntime } from './services/runtimes'
-import { cancelJob, getJob, getJobLogs, onJobCompleted, startEngineJob, startJob, startTrainingJob } from './services/supervisor'
+import { cancelJob, getJob, getJobLogs, onJobCompleted, startEngineJob, startTrainingJob } from './services/supervisor'
 import { shutdownMossInfer } from './services/mossInfer'
 import { createTrainerVersion, listTrainerVersions, startTrainerRun } from './services/trainers'
 import { listLaunchRows, removeLaunchRow, upsertLaunchRow } from './services/launchQueue'
@@ -47,6 +47,10 @@ import { checkUpdates } from './services/updates'
 import { downloadCustomModel, getCatalog, listDownloads } from './services/models'
 import { registerGalleryProtocol } from './services/gallery'
 import { createAppWindow, getWindow, openWindow } from './windows'
+
+async function startJob(input: Record<string, unknown>) {
+  return startEngineJob(input as never)
+}
 
 const isDev = !app.isPackaged
 const smoke = process.argv.includes('--smoke')

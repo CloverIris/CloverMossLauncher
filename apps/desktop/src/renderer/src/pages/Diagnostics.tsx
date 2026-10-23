@@ -20,7 +20,6 @@ export function DiagnosticsPage(): React.JSX.Element {
   const toast = useToast()
   const diagnostics = useApp((state) => state.diagnostics)
   const jobs = useApp((state) => state.jobs)
-  const startJob = useApp((state) => state.startJob)
   const dismissDiagnostic = useApp((state) => state.dismissDiagnostic)
   const clearDiagnostics = useApp((state) => state.clearDiagnostics)
   const refreshDiagnostics = useApp((state) => state.refreshDiagnostics)
@@ -49,30 +48,6 @@ export function DiagnosticsPage(): React.JSX.Element {
       } else if (solution.action === 'repair_runtime') {
         const job = jobs.find((item) => item.id === diagnostic.jobId)
         navigate(job ? `/instances/${job.instanceId}` : '/instances')
-      } else if (solution.action === 'retry_lower') {
-        const job = jobs.find((item) => item.id === diagnostic.jobId)
-        if (!job) {
-          toast.push('找不到对应的任务，无法重试', 'error')
-          return
-        }
-        const width = Math.max(256, Math.floor(job.params.width / 2 / 16) * 16)
-        const height = Math.max(256, Math.floor(job.params.height / 2 / 16) * 16)
-        const next = await startJob({
-          instanceId: job.instanceId,
-          prompt: job.params.prompt,
-          negativePrompt: job.params.negativePrompt,
-          width,
-          height,
-          steps: job.params.steps,
-          cfg: job.params.cfg,
-          seed: job.params.seed,
-          profile: job.params.profile,
-          workspace: 'clover',
-          mode: job.mode === 'simulate' ? 'simulate' : 'runner',
-        })
-        setActiveJob(next.id)
-        toast.push(`已用 ${width}×${height} 重新提交`, 'success')
-        openWindow('terminal')
       } else if (solution.action === 'copy_diagnostics') {
         await navigator.clipboard.writeText(JSON.stringify(diagnostic, null, 2))
         toast.push('诊断信息已复制', 'success')

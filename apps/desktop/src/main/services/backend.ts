@@ -5,10 +5,9 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 import type { BackendInfo, WebAccessInfo } from '@shared/backend'
 import type { JobRecord } from '@shared/types'
 import { onEmit } from '../lib/events'
-import { cancelJob, getJob, listJobs, startEngineJob, startJob } from './supervisor'
+import { cancelJob, getJob, listJobs, startEngineJob } from './supervisor'
 import { getCatalog } from './models'
 import { listGallery, readGalleryFile } from './gallery'
-import { listInstances } from './instances'
 import { deleteProject, getProject, listProjects, saveProject } from './projects'
 import { getSettings } from './settings'
 
@@ -29,9 +28,7 @@ function handleRpc(message: Record<string, unknown>): void {
   }
   void (async () => {
     try {
-      if (method === 'startJob') {
-        respond(await startJob(params as never))
-      } else if (method === 'startEngineJob') {
+      if (method === 'startEngineJob') {
         respond(await startEngineJob(params as never))
       } else if (method === 'cancelJob') {
         respond(await cancelJob(String(params['id'] ?? '')))
@@ -48,8 +45,6 @@ function handleRpc(message: Record<string, unknown>): void {
       } else if (method === 'deleteProject') {
         deleteProject(String(params['id'] ?? ''))
         respond(true)
-      } else if (method === 'listInstances') {
-        respond(await listInstances())
       } else if (method === 'listModels') {
         respond(await getCatalog(getSettings()))
       } else if (method === 'listGallery') {

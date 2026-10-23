@@ -1,10 +1,10 @@
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { Play, Square, SquareTerminal } from 'lucide-react'
+import { Square, SquareTerminal } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { useApp } from '../store'
-import { cn, useToast } from '../components/ui'
+import { cn } from '../components/ui'
 
 const stateLabel = {
   queued: '排队',
@@ -32,8 +32,6 @@ export function TerminalPage(): React.JSX.Element {
   const loadJobLogs = useApp((state) => state.loadJobLogs)
   const sendJobInput = useApp((state) => state.sendJobInput)
   const cancelJob = useApp((state) => state.cancelJob)
-  const startJob = useApp((state) => state.startJob)
-  const toast = useToast()
 
   const ordered = useMemo(
     () =>
@@ -156,38 +154,6 @@ export function TerminalPage(): React.JSX.Element {
     fitRef.current?.fit()
   }, [active, logs])
 
-  async function restart(job: typeof jobs[number]): Promise<void> {
-    if (job.kind === 'training') {
-      toast.push('训练任务请在 Kohaku Trainer 中重新启动', 'info')
-      return
-    }
-    if (!job.params.prompt.trim()) {
-      toast.push('这条旧任务没有提示词，请在 MossStudio 中重新生成', 'info')
-      return
-    }
-    try {
-      const next = await startJob({
-        instanceId: job.instanceId,
-        caseId: job.caseId,
-        caseName: job.caseName,
-        workspace: 'clover',
-        deviceId: job.deviceId,
-        prompt: job.params.prompt,
-        negativePrompt: job.params.negativePrompt,
-        width: job.params.width,
-        height: job.params.height,
-        steps: job.params.steps,
-        cfg: job.params.cfg,
-        seed: job.params.seed,
-        profile: job.params.profile,
-        mode: 'runner',
-      })
-      setActiveJob(next.id)
-      toast.push('已重新启动', 'success')
-    } catch (error) {
-      toast.push(error instanceof Error ? error.message : String(error), 'error')
-    }
-  }
 
   return (
     <div className="flex h-full min-h-0 bg-transparent">
@@ -249,25 +215,7 @@ export function TerminalPage(): React.JSX.Element {
                   >
                     <Square className="size-3" />
                   </span>
-                ) : (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void restart(job)
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.stopPropagation()
-                        void restart(job)
-                      }
-                    }}
-                    className="mt-0.5 rounded-[3px] p-1 text-[var(--color-text-tertiary)] hover:bg-white/[0.08] hover:text-accent-300"
-                  >
-                    <Play className="size-3" />
-                  </span>
-                )}
+                ) : null}
               </button>
             ))
           )}

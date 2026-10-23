@@ -153,10 +153,6 @@ const server = createServer(async (req, res) => {
         return
       }
     }
-    if (req.method === 'GET' && url.pathname === '/api/instances') {
-      send(res, 200, await rpc('listInstances'))
-      return
-    }
     if (req.method === 'GET' && url.pathname === '/api/models') {
       send(res, 200, await rpc('listModels'))
       return
@@ -172,10 +168,6 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/jobs/')) {
       send(res, 200, await rpc('getJob', { id: decodeURIComponent(url.pathname.slice('/api/jobs/'.length)) }))
-      return
-    }
-    if (req.method === 'POST' && url.pathname === '/api/jobs') {
-      send(res, 200, await rpc('startJob', await readBody(req)))
       return
     }
     if (req.method === 'POST' && url.pathname === '/api/engine-jobs') {
