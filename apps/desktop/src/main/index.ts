@@ -37,6 +37,7 @@ import {
   remoteVersions,
 } from './services/remoteTrainer'
 import { run } from './lib/run'
+import { archiveLegacyInferenceData } from './services/legacyMigration'
 import { matchRule, parseTqdm } from './services/parsers'
 import { registerIpc } from './ipc'
 import { scanEnvironment } from './services/env'
@@ -118,6 +119,7 @@ async function runSmoke(): Promise<void> {
 
 app.whenReady().then(async () => {
   ensureDirs(getSettings().modelsRoot)
+  try { archiveLegacyInferenceData() } catch (error) { console.error('[migration]', error) }
   onJobCompleted((job) => {
     if (job.kind === 'training' && job.state === 'succeeded') void collectTrainerArtifact(job)
   })
