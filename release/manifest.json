@@ -12,7 +12,7 @@
   "home": {
     "chapter": "万象初绘",
     "title": "一念落纸上，万象入画来。",
-    "subtitle": "选好工作台、实例与设备，开始今天的创作。"
+    "subtitle": "在 MossStudio 创作，引擎与模型在管理页准备。"
   },
   "announcements": [
     {
@@ -33,11 +33,6 @@
   "installers": [],
   "assets": [],
   "sources": {
-    "moss": {
-      "repo": "https://github.com/OpenMOSS/MOSS-Image",
-      "branch": "main",
-      "recommended_commit": "95559c93"
-    },
     "git_mirrors": [
       "https://ghproxy.net/https://github.com/",
       "https://gh-proxy.com/https://github.com/",

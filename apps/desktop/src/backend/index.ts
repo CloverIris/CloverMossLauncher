@@ -125,13 +125,12 @@ const server = createServer(async (req, res) => {
       return
     }
     if (req.method === 'GET' && url.pathname === '/api/studio/bootstrap') {
-      const [projects, instances, models, gallery] = await Promise.all([
+      const [projects, models, gallery] = await Promise.all([
         rpc('listProjects'),
-        rpc('listInstances'),
         rpc('listModels'),
         rpc('listGallery', { limit: 12 }),
       ])
-      send(res, 200, { projects, instances, models, gallery })
+      send(res, 200, { projects, instances: [], models, gallery })
       return
     }
     if (req.method === 'GET' && url.pathname === '/api/projects') {

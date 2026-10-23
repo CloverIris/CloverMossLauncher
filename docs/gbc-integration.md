@@ -47,7 +47,7 @@ pip install -e examples/qwen35
 gbc doctor
 ```
 
-- 可以使用实例的 `.venv/bin`，通过 `CLOVER_GBC_BIN` 指定 `gbc` 路径。
+- 可以使用独立 Python 环境的 `gbc`，通过 `CLOVER_GBC_BIN` 指定路径。
 - VLM Provider 必须是 OpenAI-compatible 或 Anthropic，且已配置 API Key。
 - 首次运行会下载 OWLv2/EmbeddingGemma；SAM3 更大更慢。
 - 真实速度取决于 GPU/API、图片数量和 detector。

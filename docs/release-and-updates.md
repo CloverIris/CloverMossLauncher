@@ -65,7 +65,7 @@ pnpm release:md:check
   "home": {
     "chapter": "万象初绘",
     "title": "一念落纸上，万象入画来。",
-    "subtitle": "选好工作台、实例与设备，开始今天的创作。"
+    "subtitle": "在 MossStudio 创作，引擎与模型在管理页准备。"
   },
   "installers": [
     {
@@ -102,7 +102,7 @@ pnpm release:md:check
 解析器只接受 `schema_version: 2`；URL 必须是 HTTPS，installer 必须带 64 位 hex sha256。
 应用解析器在 `apps/desktop/src/shared/release.ts`。
 
-`home` 是可选字段，用于远程更新启动器首页的篇章名、主标题和副标题。字段值按纯文本渲染，不支持 HTML；各项长度由 schema 限制。开发时编辑 `release/manifest.json`，再运行 `pnpm release:md` 生成发布文档。旧版 release 缺少 `home` 时，首页使用应用内置文案；清空字段可回退至默认值，不会影响启动器或公告加载。
+`home` 是可选字段，用于远程更新 Studio 首页的篇章名、主标题和副标题。字段值按纯文本渲染，不支持 HTML；各项长度由 schema 限制。开发时编辑 `release/manifest.json`，再运行 `pnpm release:md` 生成发布文档。旧版 release 缺少 `home` 时，首页使用应用内置文案；清空字段可回退至默认值，不会影响 Studio 或公告加载。
 
 ## 4. 版本与更新流程
 
