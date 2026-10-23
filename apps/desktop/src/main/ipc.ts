@@ -42,6 +42,8 @@ import { getWebAccessInfo, startBackend, stopBackend } from './services/backend'
 import { chat, listConversations, listProviders, removeConversation, removeProvider, saveProvider } from './services/ai'
 import { gbcStatus, runGbc } from './services/gbc'
 import { localEngineInfo, probeLocalEngine, remoteEngineInfo } from './services/engines'
+import { prepareRemoteDefaultModel } from './services/remoteModels'
+import { getTrainingHost, updateTrainingHostModelPath } from './services/trainingHosts'
 import { pushTestNotification } from './services/desktopNotifications'
 import { isInside } from './lib/paths'
 import { openWindow } from './windows'
@@ -303,6 +305,14 @@ export function registerIpc(): void {
   handle(Ipc.engineProbe, null, () => probeLocalEngine())
 
   handle(Ipc.engineRemoteStatus, schemas.engineRemoteStatus, ({ hostId }) => remoteEngineInfo(hostId))
+
+  handle(Ipc.enginePrepareRemoteModel, schemas.enginePrepareRemoteModel, async ({ hostId, repo }) => {
+    const host = getTrainingHost(getSettings(), hostId)
+    if (!host) throw new Error('主机不存在')
+    const result = await prepareRemoteDefaultModel(host, repo)
+    updateTrainingHostModelPath(hostId, result.path)
+    return result
+  })
 
   handle(Ipc.mossInferDownloadState, null, () => getMossInferDownloadState())
 

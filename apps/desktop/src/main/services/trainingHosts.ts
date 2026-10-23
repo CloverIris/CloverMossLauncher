@@ -60,6 +60,7 @@ export interface SaveTrainingHostInput {
   trainerRoot: string
   engineRoot?: string
   outputRoot?: string
+  modelPath?: string
   instanceRoot?: string
   modelsRoot?: string
 }
@@ -88,6 +89,7 @@ export function saveTrainingHost(input: SaveTrainingHostInput): TrainingHost {
     trainerRoot: input.trainerRoot.trim(),
     engineRoot: input.engineRoot?.trim() || existing?.engineRoot,
     outputRoot: input.outputRoot?.trim() || existing?.outputRoot,
+    modelPath: input.modelPath?.trim() || existing?.modelPath,
     instanceRoot: input.instanceRoot?.trim() || undefined,
     modelsRoot: input.modelsRoot?.trim() || undefined,
     status: 'unchecked',
@@ -152,6 +154,13 @@ export function updateTrainingHostVersions(settings: Settings, id: string, versi
   const host = hosts.find((item) => item.id === id)
   if (!host) return
   host.versions = versions
+  persist()
+}
+
+export function updateTrainingHostModelPath(id: string, modelPath: string): void {
+  const host = load().find((item) => item.id === id)
+  if (!host) throw new Error('主机不存在')
+  host.modelPath = modelPath
   persist()
 }
 

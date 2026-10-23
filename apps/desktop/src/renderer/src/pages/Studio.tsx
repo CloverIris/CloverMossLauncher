@@ -313,6 +313,11 @@ export function StudioPage(): React.JSX.Element {
     localStorage.setItem('mossstudio.modelBundleId', next.id)
   }, [catalog, modelBundleId])
   useEffect(() => {
+    if (!engineHostId) return
+    const host = hosts.find((item) => item.id === engineHostId)
+    if (host?.modelPath) setRemoteModelPath(host.modelPath)
+  }, [engineHostId, hosts])
+  useEffect(() => {
     if (deviceId || !devices.length) return
     const next = devices.find((device) => device.kind === 'cuda') ?? devices[0]
     setDeviceId(next.id)

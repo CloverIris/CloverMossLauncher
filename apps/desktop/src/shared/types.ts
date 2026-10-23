@@ -372,6 +372,7 @@ export interface TrainingHost {
   /** MossInfer engine root on this host (default ~/.mossstudio/engine). */
   engineRoot?: string
   outputRoot?: string
+  modelPath?: string
   /** Remote MOSS instance worktrees; used by the device manager and remote inference. */
   instanceRoot?: string
   /** Remote HF-compatible model cache; never auto-uploaded from the local cache. */

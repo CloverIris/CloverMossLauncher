@@ -243,6 +243,8 @@ export const schemas = {
 
   engineRemoteStatus: z.object({ hostId: z.string().min(1).max(80) }),
 
+  enginePrepareRemoteModel: z.object({ hostId: z.string().min(1).max(80), repo: z.string().min(1).max(200).optional() }),
+
   gbcRun: z.object({
     folder: z.string().min(1).max(4096),
     providerId: z.string().min(1).max(120),

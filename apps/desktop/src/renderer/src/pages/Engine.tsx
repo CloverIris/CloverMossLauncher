@@ -21,6 +21,7 @@ export function EnginePage(): React.JSX.Element {
   const [hosts, setHosts] = useState<ManagedHost[]>([])
   const [remote, setRemote] = useState<Record<string, { available: boolean; path: string; error?: string }>>({})
   const [busy, setBusy] = useState(false)
+  const [preparing, setPreparing] = useState<string | null>(null)
   const [channel, setChannel] = useState<'stable' | 'dev'>('stable')
   const [variant, setVariant] = useState<'bundled' | 'system-cuda'>('bundled')
 
@@ -65,6 +66,19 @@ export function EnginePage(): React.JSX.Element {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function prepareModel(hostId: string): Promise<void> {
+    setPreparing(hostId)
+    try {
+      const result = await call<{ path: string; revision: string; files: number }>(Ipc.enginePrepareRemoteModel, { hostId })
+      toast.push(`远端模型已准备：${result.files} 个文件`, 'success')
+      await refresh()
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), 'error')
+    } finally {
+      setPreparing(null)
     }
   }
 
@@ -199,6 +213,7 @@ export function EnginePage(): React.JSX.Element {
                 <div className="flex shrink-0 items-center gap-1.5">
                   {status ? <Pill tone={status.available ? 'accent' : 'red'}>{status.available ? 'ready' : 'missing'}</Pill> : null}
                   <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
+                  <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
                 </div>
               </div>
             )

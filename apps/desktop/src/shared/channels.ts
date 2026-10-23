@@ -104,6 +104,7 @@ export const Ipc = {
   engineStatus: 'engine:status',
   engineProbe: 'engine:probe',
   engineRemoteStatus: 'engine:remote-status',
+  enginePrepareRemoteModel: 'engine:prepare-remote-model',
 } as const
 
 export type IpcChannel = (typeof Ipc)[keyof typeof Ipc]

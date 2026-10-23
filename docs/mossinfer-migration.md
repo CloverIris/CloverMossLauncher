@@ -23,6 +23,8 @@
   - 复用 SSH host 的 `engineRoot`/`outputRoot`
   - SSH 启动远端 `moss-server`，JSON-lines 协议
   - 远端生成 PNG 通过 SSH + base64 回传本地
+  - 远端 HF 默认 SFT 下载（curl，无 Python）
+  - host 记录 `modelPath`，Studio 选择远端时自动带出
   - `mossinfer-remote-job` fake SSH 冒烟通过
 
 ## 下一阶段
@@ -34,7 +36,7 @@
 5. 远端（部分完成）：
    - SSH 启动 Linux sidecar ✅
    - 远端输出回传 ✅（base64，后续改 scp）
-   - 远端 HF 权重下载 ❌
+   - 远端 HF 默认 SFT 下载 ✅（组件 bundle/断点续传待补）
    - 远端引擎安装/解压 ❌
 6. Python/Git 检测只保留在 Trainer
 7. 旧推理数据重置/归档
