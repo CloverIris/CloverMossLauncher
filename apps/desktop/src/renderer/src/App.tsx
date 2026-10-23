@@ -14,8 +14,6 @@ import { DiagnosticsPage } from './pages/Diagnostics'
 import { DevicesPage } from './pages/Devices'
 import { EnginePage } from './pages/Engine'
 import { StudioPage } from './pages/Studio'
-import { InstanceDetailPage } from './pages/InstanceDetail'
-import { InstancesPage } from './pages/Instances'
 import { ModelsPage } from './pages/Models'
 import { SettingsPage } from './pages/Settings'
 import { TerminalPage } from './pages/Terminal'
@@ -130,8 +128,6 @@ function StudioShell(): React.JSX.Element {
             <Routes>
               <Route path="/studio" element={<StudioPage />} />
               <Route path="/engines" element={<EnginePage />} />
-              <Route path="/instances" element={<InstancesPage />} />
-              <Route path="/instances/:id" element={<InstanceDetailPage />} />
               <Route path="/models" element={<ModelsPage />} />
               <Route path="/devices" element={<DevicesPage />} />
               <Route path="/training" element={<TrainingPage />} />

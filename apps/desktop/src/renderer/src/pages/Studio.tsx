@@ -29,8 +29,7 @@ import {
   Unlock,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import type { GalleryItem, InstanceInfo, JobRecord, ProjectDocument, ProjectSummary } from '@shared/types'
+import type { GalleryItem, JobRecord, ProjectDocument, ProjectSummary } from '@shared/types'
 import type { BackendInfo } from '@shared/backend'
 import { Ipc } from '@shared/channels'
 import { call } from '../lib/api'
@@ -171,7 +170,6 @@ interface DraftTabSnapshot {
   seed: number
   steps: number
   cfg: number
-  instanceId: string
   modelBundleId: string
   deviceId: string
   seriesId: string
@@ -209,7 +207,6 @@ function projectSnapshot(input: {
   seed: number
   steps: number
   cfg: number
-  instanceId: string
   modelBundleId: string
   deviceId: string
   backgroundPath?: string
@@ -221,10 +218,7 @@ function projectSnapshot(input: {
 
 export function StudioPage(): React.JSX.Element {
   const toast = useToast()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const requestedInstanceId = searchParams.get('instanceId')
   const storedPrompt = useApp((state) => state.studioPrompt)
-  const studioInstanceId = useApp((state) => state.studioInstanceId)
   const storedDraft = useApp((state) => state.studioDraft)
   const background = useApp((state) => state.studioBackground)
   const setStudioPrompt = useApp((state) => state.setStudioPrompt)
@@ -243,7 +237,6 @@ export function StudioPage(): React.JSX.Element {
       // ignore
     }
   }, [background, setStudioBackground])
-  const instances = useApp((state) => state.instances)
   const catalog = useApp((state) => state.catalog)
   const devices = useApp((state) => state.devices)
   const env = useApp((state) => state.env)
@@ -286,8 +279,6 @@ export function StudioPage(): React.JSX.Element {
   const [steps, setSteps] = useState(env?.recommendation.steps ?? 8)
   const [cfg, setCfg] = useState(env?.recommendation.profile === 'dmd8' ? 1 : 3)
   const [seed, setSeed] = useState(42)
-  const [selectedInstanceId, setInstanceId] = useState(studioInstanceId ?? '')
-  const instanceId = instances.find((item) => item.id === selectedInstanceId)?.id ?? instances[0]?.id ?? ''
   const [modelBundleId, setModelBundleId] = useState(() => localStorage.getItem('mossstudio.modelBundleId') ?? '')
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('mossstudio.deviceId') ?? '')
   const modelBundle = catalog?.bundles.find((bundle) => bundle.id === modelBundleId) ?? null
@@ -302,8 +293,8 @@ export function StudioPage(): React.JSX.Element {
   const lastSaved = useRef('')
   const skipAutosave = useRef(false)
   const snapshot = useMemo(
-    () => projectSnapshot({ name: projectName, draft, prompt, negative, seed, steps, cfg, instanceId, modelBundleId, deviceId, backgroundPath: background?.path, seriesId, page }),
-    [projectName, draft, prompt, negative, seed, steps, cfg, instanceId, modelBundleId, deviceId, background?.path, seriesId, page],
+    () => projectSnapshot({ name: projectName, draft, prompt, negative, seed, steps, cfg, modelBundleId, deviceId, backgroundPath: background?.path, seriesId, page }),
+    [projectName, draft, prompt, negative, seed, steps, cfg, modelBundleId, deviceId, background?.path, seriesId, page],
   )
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -311,9 +302,6 @@ export function StudioPage(): React.JSX.Element {
     if (storedPrompt) setPrompt(storedPrompt)
   }, [storedPrompt])
 
-  useEffect(() => {
-    if (studioInstanceId) setInstanceId(studioInstanceId)
-  }, [studioInstanceId])
   useEffect(() => {
     if (modelBundleId || !catalog?.bundles.length) return
     const next = catalog.bundles.find((bundle) => bundle.recommended) ?? catalog.bundles[0]
@@ -326,17 +314,6 @@ export function StudioPage(): React.JSX.Element {
     setDeviceId(next.id)
     localStorage.setItem('mossstudio.deviceId', next.id)
   }, [devices, deviceId])
-
-  useEffect(() => {
-    if (!requestedInstanceId || !instances.some((item) => item.id === requestedInstanceId)) return
-    setInstanceId(requestedInstanceId)
-    // Consume the request so reopening this window with the same instance applies it again.
-    setSearchParams((params) => {
-      const next = new URLSearchParams(params)
-      next.delete('instanceId')
-      return next
-    }, { replace: true })
-  }, [requestedInstanceId, instances, setSearchParams])
 
   useEffect(() => {
     if (storedDraft) setDraft(storedDraft)
@@ -540,7 +517,6 @@ export function StudioPage(): React.JSX.Element {
         seed,
         steps,
         cfg,
-        instanceId: instanceId || undefined,
         modelBundleId: modelBundleId || undefined,
         deviceId: deviceId || undefined,
         backgroundPath: background?.path,
@@ -551,7 +527,7 @@ export function StudioPage(): React.JSX.Element {
       setDraftTab(null)
       setProjectName(saved.name)
       lastSaved.current = projectSnapshot({
-        name: saved.name, draft, prompt, negative, seed, steps, cfg, instanceId, modelBundleId, deviceId,
+        name: saved.name, draft, prompt, negative, seed, steps, cfg, modelBundleId, deviceId,
         backgroundPath: background?.path, seriesId, page,
       })
       setProjects(await electronStudioClient.listProjects())
@@ -573,7 +549,6 @@ export function StudioPage(): React.JSX.Element {
       seed,
       steps,
       cfg,
-      instanceId,
       modelBundleId,
       deviceId,
       seriesId,
@@ -597,7 +572,6 @@ export function StudioPage(): React.JSX.Element {
     setSeed(draftTab.seed)
     setSteps(draftTab.steps)
     setCfg(draftTab.cfg)
-    setInstanceId(draftTab.instanceId)
     setModelBundleId(draftTab.modelBundleId)
     setDeviceId(draftTab.deviceId)
     setStudioBackground(draftTab.background)
@@ -625,7 +599,6 @@ export function StudioPage(): React.JSX.Element {
       setSeed(project.seed)
       setSteps(project.steps)
       setCfg(project.cfg)
-      setInstanceId(project.instanceId ?? instances[0]?.id ?? '')
       if (project.modelBundleId) setModelBundleId(project.modelBundleId)
       if (project.deviceId) setDeviceId(project.deviceId)
       if (project.backgroundPath) {
@@ -636,7 +609,7 @@ export function StudioPage(): React.JSX.Element {
       }
       lastSaved.current = projectSnapshot({
         name: project.name, draft: nextDraft, prompt: project.prompt, negative: project.negative,
-        seed: project.seed, steps: project.steps, cfg: project.cfg, instanceId: project.instanceId ?? '', modelBundleId: project.modelBundleId ?? modelBundleId, deviceId: project.deviceId ?? deviceId,
+        seed: project.seed, steps: project.steps, cfg: project.cfg, modelBundleId: project.modelBundleId ?? modelBundleId, deviceId: project.deviceId ?? deviceId,
         backgroundPath: project.backgroundPath, seriesId: project.seriesId ?? '', page: project.page ?? 1,
       })
       setTimeout(() => { skipAutosave.current = false }, 600)
@@ -680,7 +653,9 @@ export function StudioPage(): React.JSX.Element {
           locked: item.locked === true,
           opacity: item.opacity ?? 1,
         })),
-        prompt, negative, seed, steps, cfg, instanceId: instanceId || undefined,
+        prompt, negative, seed, steps, cfg,
+        modelBundleId: modelBundleId || undefined,
+        deviceId: deviceId || undefined,
         backgroundPath: background?.path,
         seriesId: nextSeries,
         page: page + 1,

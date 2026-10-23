@@ -62,6 +62,12 @@ const fixtureInstances = ['instance-a', 'instance-b'].map((id) => ({
   id, name: id, runtimeState: 'ready', placement: { kind: 'local' },
 })) as InstanceInfo[]
 
+const fixtureCatalog = {
+  bundles: [{ id: 'fixture-bundle', name: 'Fixture MOSS', description: '', components: { dit: 'dit', textEncoder: 'text', vae: 'vae' }, support: 'support', recommended: true }],
+  models: [], adapters: [], source: 'builtin', updatedAt: new Date().toISOString(),
+}
+const fixtureDevices = [{ id: 'cuda:0', name: 'Fixture GPU', kind: 'cuda', detail: 'CUDA', available: true }]
+
 window.fetch = async (_url, init) => {
   document.getElementById('studio-job')!.textContent = String(init?.body)
   return new Response(JSON.stringify({ id: 'fixture-job' }), { status: 200 })
@@ -87,7 +93,7 @@ function Fixture(): React.JSX.Element {
         <button id="view-home" onClick={() => setView('home')}>Home</button>
         <button id="view-devices" onClick={() => setView('devices')}>Devices</button>
         <button id="view-studio" onClick={() => {
-          useApp.setState({ studioPrompt: 'Fixture prompt', instances: [] })
+          useApp.setState({ studioPrompt: 'Fixture prompt', catalog: fixtureCatalog as never, devices: fixtureDevices as never })
           setView('studio')
         }}>Studio</button>
         <button id="load-instances" onClick={() => useApp.setState({ instances: [...fixtureInstances] })}>Load instances</button>
