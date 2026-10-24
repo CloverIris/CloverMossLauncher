@@ -213,6 +213,7 @@ export function registerIpc(): void {
     const host = getTrainingHost(getSettings(), hostId)
     if (!host) throw new Error('主机不存在')
     await removeRemoteResource(host, path)
+    emit(Events.hostsChanged, { id: hostId })
     return true
   })
 
@@ -237,7 +238,7 @@ export function registerIpc(): void {
     return true
   })
 
-  handle(Ipc.onboardingStatus, null, () => getOnboardingStatus(getSettings()))
+  handle(Ipc.onboardingStatus, schemas.onboardingStatus, (input) => getOnboardingStatus(getSettings(), input?.hostId))
 
   handle(Ipc.trainerMirror, null, () => trainerMirrorInfo(getSettings()))
 
@@ -357,6 +358,7 @@ export function registerIpc(): void {
     if (!host) throw new Error('主机不存在')
     const result = await prepareRemoteDefaultModel(host, repo)
     updateTrainingHostModelPath(hostId, result.path)
+    emit(Events.hostsChanged, { id: hostId })
     return result
   })
 
@@ -396,7 +398,9 @@ export function registerIpc(): void {
     const catalog = await getCatalog(getSettings(), true)
     const model = catalog.models.find((entry) => entry.id === modelId) ?? catalog.adapters.find((entry) => entry.id === modelId)
     if (!model) throw new Error('模型不存在')
-    return prepareRemoteModel(host, model)
+    const result = await prepareRemoteModel(host, model)
+    emit(Events.hostsChanged, { id: hostId })
+    return result
   })
 
   handle(Ipc.modelsImportFolder, null, async () => {

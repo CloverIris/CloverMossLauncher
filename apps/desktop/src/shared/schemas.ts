@@ -42,6 +42,8 @@ export const schemas = {
       updateChannel: z.enum(['stable', 'beta']),
       dismissedUpdateVersion: z.string().max(80).nullable(),
       sidebarCollapsed: z.boolean(),
+      onboardingState: z.enum(['pending', 'active', 'dismissed', 'completed']),
+      onboardingHostId: z.string().min(1).max(80),
       galleryRoots: z.array(z.string().max(4096)).max(20),
       homeBackground: z.string().max(4096).nullable(),
       trainerRoot: z.string().max(4096).nullable(),
@@ -61,6 +63,8 @@ export const schemas = {
     variant: z.enum(['system-cuda', 'bundled']).optional(),
     cudaWheels: z.boolean().optional(),
   }),
+
+  onboardingStatus: z.object({ hostId: z.string().min(1).max(80).optional() }).optional(),
 
   gitBranches: z
     .object({

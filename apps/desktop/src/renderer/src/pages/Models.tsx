@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Ipc } from '@shared/channels'
 import type { AdapterEntry, DownloadTask, ManagedHost, ModelEntry } from '@shared/types'
 import { Events } from '@shared/channels'
@@ -64,6 +65,7 @@ const categories = [
 type Entry = { kind: 'model'; value: ModelEntry } | { kind: 'adapter'; value: AdapterEntry }
 
 export function ModelsPage(): React.JSX.Element {
+  const location = useLocation()
   const catalog = useApp((s) => s.catalog)
   const downloads = useApp((s) => s.downloads)
   const instances = useApp((s) => s.instances)
@@ -97,6 +99,20 @@ export function ModelsPage(): React.JSX.Element {
   const [remoteCategory, setRemoteCategory] = useState('all')
   const [remoteModelBusy, setRemoteModelBusy] = useState<string | null>(null)
   const remoteHost = hosts.find((host) => host.id === remoteHostId) ?? null
+  useEffect(() => {
+    const query = new URLSearchParams(location.search)
+    const component = query.get('component')
+    if (!component) return
+    const hostId = query.get('hostId') ?? 'local'
+    setMode(hostId === 'local' ? 'local' : 'remote')
+    if (hostId !== 'local') setRemoteHostId(hostId)
+    if (query.get('bundle')) setBundleId(query.get('bundle')!)
+    setCategory(component === 'support' ? 'all' : component)
+    setRemoteCategory(component === 'support' ? 'all' : component)
+    setFormat('diffusers')
+    setInstalledOnly(false)
+    setQuery('')
+  }, [location.key, location.search])
   useEffect(() => { setLocalRoot(settings?.modelsRoot ?? '') }, [settings?.modelsRoot])
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -356,7 +372,7 @@ export function ModelsPage(): React.JSX.Element {
         <button type="button" onClick={() => setMode('remote')} className={cn('border-b-2 px-4 py-2 text-[12px]', mode === 'remote' ? 'border-accent-400 text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-tertiary)]')}>远端模型管理</button>
       </div>
 
-      <div className={mode === 'remote' ? 'space-y-5' : 'hidden'}>
+      <div data-oobe-host={remoteHostId} className={mode === 'remote' ? 'space-y-5' : 'hidden'}>
       <Card className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -374,8 +390,8 @@ export function ModelsPage(): React.JSX.Element {
             <label className="block space-y-1"><span className="text-[9px] text-[var(--color-text-tertiary)]">模型目录（可自动查找）</span><Input value={remoteModelPath} onChange={(event) => setRemoteModelPath(event.target.value)} placeholder="/home/.../snapshots/..." /></label>
             <div className="flex flex-wrap gap-1.5">
               <Button tone="secondary" onClick={() => void saveRemotePaths()} disabled={remoteBusy}>保存路径</Button>
-              <Button tone="ghost" onClick={() => void findRemoteModel()} disabled={remoteBusy}>自动查找</Button>
-              <Button tone="ghost" onClick={() => void prepareRemote()} disabled={remoteBusy}>{remoteBusy ? <Spinner className="size-3" /> : '准备默认 SFT'}</Button>
+              <Button data-oobe="model" tone="ghost" onClick={() => void findRemoteModel()} disabled={remoteBusy}>自动查找</Button>
+              <Button data-oobe="model" data-oobe-hint="在这台 SSH 主机准备完整的默认模型；已有权重可先自动查找。远端下载不占用本机模型空间。" tone="ghost" onClick={() => void prepareRemote()} disabled={remoteBusy}>{remoteBusy ? <Spinner className="size-3" /> : '准备默认 SFT'}</Button>
               <Button tone="ghost" onClick={() => void removeRemote()} disabled={remoteBusy || !remoteModelPath}>删除模型目录</Button>
             </div>
           </div>
@@ -385,7 +401,7 @@ export function ModelsPage(): React.JSX.Element {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <nav aria-label="远端组件分类" className="flex max-w-full gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)]">
+          <nav data-oobe="model" data-oobe-hint-title="按组件挑选" data-oobe-hint-position="bottom" data-oobe-hint="也可以在下方按 MOSS 模型、Qwen 编码器、VAE 等分页单独挑选并下载组件，已有编码器和 VAE 可复用。" aria-label="远端组件分类" className="flex max-w-full gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)]">
             {categories.map(({ id, name, icon: Icon }) => (
               <button key={id} onClick={() => setRemoteCategory(id)} className={cn('flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[12px] transition-colors', remoteCategory === id ? 'border-accent-400 text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]')}>
                 <Icon className="size-3.5" />{name}
@@ -450,7 +466,7 @@ export function ModelsPage(): React.JSX.Element {
 
       </div>
 
-      <div className={mode === 'local' ? 'space-y-5' : 'hidden'}>
+      <div data-oobe-host="local" className={mode === 'local' ? 'space-y-5' : 'hidden'}>
         <Card className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -470,8 +486,8 @@ export function ModelsPage(): React.JSX.Element {
         </Card>
 
       {bundle ? (
-        <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-start justify-between gap-4 px-5 pt-4">
+        <Card data-oobe="model" data-oobe-hint-title="推荐组合" data-oobe-hint-position="bottom" data-oobe-hint="首次使用建议选择推荐组合，点击「补齐组件」即可下载主模型、Qwen 编码器、VAE 与运行配置，已有组件会复用。" className="overflow-hidden">
+          <div data-oobe-hint-target className="flex flex-wrap items-start justify-between gap-4 px-5 pt-4">
             <div className="min-w-0">
               <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
                 <Layers className="size-3.5 text-accent-400" /> 推荐组合{' '}
@@ -624,6 +640,7 @@ export function ModelsPage(): React.JSX.Element {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <nav
+            data-oobe="model" data-oobe-hint-title="按组件挑选" data-oobe-hint-position="bottom" data-oobe-hint="也可以在下方按 MOSS 模型、Qwen 编码器、VAE 等分页单独挑选并下载组件，已有编码器和 VAE 可复用。"
             aria-label="组件分类"
             className="flex max-w-full gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)]"
           >
@@ -823,6 +840,7 @@ export function ModelsPage(): React.JSX.Element {
               取消
             </Button>
             <Button
+              data-oobe="model" data-oobe-hint="确认组件信息后开始下载，准备清单会自动跟随下载和校验结果更新。"
               tone="primary"
               disabled={busy !== null}
               onClick={() => pending && void start(pending)}

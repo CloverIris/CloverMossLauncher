@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS: Settings = {
   dismissedAnnouncements: [],
   dismissedUpdateVersion: null,
   sidebarCollapsed: false,
+  onboardingState: 'pending',
+  onboardingHostId: 'local',
   galleryRoots: [],
   homeBackground: null,
   trainerRoot: null,

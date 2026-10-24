@@ -168,6 +168,132 @@ body {
   border-radius: var(--radius-dialog);
 }
 
+.app-oobe {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 24px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  overflow: visible;
+}
+
+.app-oobe[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-oobe::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.app-oobe-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(82dvh, calc(100dvh - 48px));
+  border-radius: var(--radius-dialog);
+  border: 0;
+  outline: none;
+  transform-origin: top left;
+}
+
+.app-oobe[data-screen="welcome"] .app-oobe-panel {
+  max-width: 480px;
+}
+
+.app-oobe[data-screen="checklist"] {
+  inset: auto 12px 48px auto;
+  width: min(344px, calc(100vw - 24px));
+  height: auto;
+  padding: 0;
+}
+
+.app-oobe[data-screen="checklist"] .app-oobe-panel {
+  max-height: calc(100dvh - 104px);
+  transition: max-height 320ms var(--motion-ease);
+}
+
+.app-oobe[data-screen="checklist"][data-collapsed="true"] .app-oobe-panel {
+  max-height: 44px;
+}
+
+.app-oobe[data-screen="checklist"][data-collapsed="true"] .app-oobe-panel > header {
+  border-bottom: 0;
+}
+
+.oobe-spotlight {
+  display: contents;
+  pointer-events: none;
+}
+
+.oobe-spotlight-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  overflow: visible;
+  animation: oobe-spotlight-enter var(--motion-normal) var(--motion-ease);
+}
+
+[data-oobe-highlighted="true"]:not(:disabled) {
+  border-color: transparent !important;
+  outline: 1.5px solid var(--accent) !important;
+  outline-offset: 0 !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent) !important;
+}
+
+.oobe-spotlight-hint {
+  position: fixed;
+  position-anchor: var(--oobe-hint-anchor);
+  position-area: left;
+  position-try-fallbacks: flip-inline, --oobe-hint-below, --oobe-hint-above;
+  position-visibility: anchors-visible;
+  z-index: 46;
+  display: flex;
+  gap: 8px;
+  width: min(280px, calc(100vw - 24px));
+  margin: 14px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: var(--radius-card);
+  background: rgba(24, 27, 33, 0.97);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 18%, transparent), 0 12px 32px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  animation: oobe-spotlight-enter var(--motion-normal) var(--motion-ease);
+}
+
+[data-oobe-hint-anchor] { anchor-name: var(--oobe-hint-anchor); }
+
+.oobe-spotlight-hint[data-position="bottom"] {
+  position-area: bottom;
+  justify-self: start;
+  position-try-fallbacks: --oobe-hint-above;
+}
+
+@position-try --oobe-hint-below { position-area: bottom; }
+@position-try --oobe-hint-above { position-area: top; }
+
+@keyframes oobe-spotlight-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 639px), (max-height: 439px) {
+  .oobe-spotlight-hint { padding: 6px 10px; }
+  .oobe-spotlight-heading { display: none; }
+  .oobe-spotlight-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 10px; line-height: 16px; }
+}
+
 .app-collapse {
   display: grid;
   grid-template-rows: 0fr;
