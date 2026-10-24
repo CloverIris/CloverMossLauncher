@@ -21,18 +21,15 @@ macOS 可运行 UI/项目/Trainer 管理，但**不能运行本机 MossInfer**�
 
 准备清单按所选本机或 SSH 主机检查：
 
-- 本机 Python 3.10+（已有解释器自动就绪；缺少时可点击「安装内置 Python」）
 - NVIDIA 推理设备
 - MossInfer 引擎
 - 模型（合并展示主模型、文本编码器、VAE、Pipeline 与采样器配置的准备状态）
 
 已安装的组件会自动勾选；完整的现有模型组合可以直接满足模型要求。本机模型不会计入远端清单。跳过、进行中和完成状态会保存，重启后不会重复询问；进行中的清单会在右下角恢复。动效遵循界面设置和系统「减少动态效果」偏好。
 
-清单底部按钮显示 `0/4` 等已完成项目统计，未全部就绪时不可点击；四项全部就绪后变为「完成」，点击保存完成状态并进入创作页。各项目的「配置」入口保持可用。
+清单底部按钮显示 `0/3` 等已完成项目统计，未全部就绪时不可点击；三项全部就绪后变为「完成」，点击保存完成状态并进入创作页。各项目的「配置」入口保持可用。
 
-内置 Python 使用 [Astral Python Build Standalone](https://github.com/astral-sh/python-build-standalone) 的 Python 3.12 安装包，按本机系统和架构选择，下载后校验 SHA256，再验证解释器、venv、ensurepip 和 SSL。安装不依赖已有 Python，完成后将应用解释器指向应用数据目录 `runtimes/python/` 中的内置版本，不修改系统 PATH。下载状态显示在清单中，失败可重试；切换 SSH 准备位置仍检查本机 Python。Python 可供 Trainer、GBC 等工具使用，MossInfer 原生推理本身不依赖 Python。
-
-Instance、Trainer 和 GBC 的完整运行环境不属于准备清单。清单不增加 Git 安装项。
+Python、Instance、Trainer 和 GBC 的完整运行环境不属于准备清单；未安装 Python 不影响清单完成。清单不增加 Git 安装项。
 
 进入待配置的页面时，35% 不透明度的暗色遮罩会突出可操作的控件，用主题发光边框和提示说明下一步。发光描边直接附着在原控件上，随控件滚动、缩放和动画同步移动。准备清单不显示外边框；仅查看清单时不显示遮罩。点击高亮区域内的操作按钮后，自动隐藏高亮、遮罩和提示，清单保持展开；弹出的 CUDA 方案、下载确认或 SSH 配置窗口不继续叠加引导。提示上的关闭按钮也只隐藏页面引导；再次点击清单的「配置」可恢复高亮。收起清单或结束引导也会清除控件描边、遮罩和提示。
 
@@ -76,6 +73,8 @@ Trainer 保留自己的前置条件：
 - 训练器版本/环境
 
 这些检测只在 Trainer 范围内使用，不属于 MossStudio 推理启动。
+
+内置 Python 安装服务保留，使用 [Astral Python Build Standalone](https://github.com/astral-sh/python-build-standalone) 的 Python 3.12 安装包，按本机系统和架构选择，下载后校验 SHA256，再验证解释器、venv、ensurepip 和 SSL。安装不依赖已有 Python，完成后将应用解释器指向应用数据目录 `runtimes/python/` 中的内置版本，不修改系统 PATH；该服务不在首次引导中展示。
 
 ## 6. GBC
 

@@ -24,7 +24,6 @@ function fixture(options = {}) {
     './models': { getCatalog: async () => ({ ...catalog, models }) },
     './modelReadiness': { legacyModelReady: async () => options.legacy ?? false },
     './mossInfer': { resolveServerPath: () => options.engine ? '/fixture/moss-server' : null },
-    './trainerEnv': { pickPython: async () => { if (options.noPython) throw new Error('missing Python'); return { path: '/fixture/python', version: '3.12.14' } } },
     './trainingHosts': { getTrainingHost: (_settings, id) => id === 'ssh-a' ? { id, name: 'Remote', kind: 'ssh' } : undefined },
     './remoteEngine': { remoteEngineStatus: async () => ({ online: !options.offline, available: options.engine, gpu: options.noGpu ? '' : 'NVIDIA' }) },
     './remoteModels': { scanRemoteModels: async () => ({ models: models.map((model) => ({ id: model.id, installed: options.remoteInstalled?.includes(model.id) ?? false })) }) },
@@ -32,30 +31,30 @@ function fixture(options = {}) {
 }
 const sft = ['moss-sft-dit', 'qwen35-encoder', 'flux2-vae-small', 'moss-pipeline']
 
-test('first run lists Python and inference requirements without retired instances', async () => {
+test('first run lists current inference requirements without retired instances/Python', async () => {
   const status = await fixture()(settings)
-  assert.deepEqual(status.steps.map((step) => step.id), ['python', 'device', 'engine', 'model'])
+  assert.deepEqual(status.steps.map((step) => step.id), ['device', 'engine', 'model'])
   assert.equal(status.ready, false)
-  assert.equal(status.steps[0].status, 'ok')
-  assert.equal(status.steps[2].action, 'engines')
-  assert.deepEqual(status.steps[3].modelIds, sft)
-  assert.match(status.steps[3].detail, /0\/4/)
+  assert.equal(status.steps[1].action, 'engines')
+  assert.deepEqual(status.steps[2].modelIds, sft)
+  assert.match(status.steps[2].detail, /0\/4/)
 })
 
-test('missing local Python offers the built-in installer even for an otherwise ready remote host', async () => {
-  const status = await fixture({ noPython: true, engine: true, remoteInstalled: sft })(settings, 'ssh-a')
-  assert.equal(status.ready, false)
-  assert.equal(status.steps[0].status, 'missing')
-  assert.equal(status.steps[0].action, 'install-python')
-  assert.ok(status.steps.slice(1).every(step => step.status === 'ok'))
+test('missing Python does not block local or remote setup completion', async () => {
+  const withoutPython = { ...settings, pythonPath: '/missing/python' }
+  for (const hostId of ['local', 'ssh-a']) {
+    const status = await fixture({ engine: true, installed: sft, remoteInstalled: sft })(withoutPython, hostId)
+    assert.deepEqual(status.steps.map(step => step.id), ['device', 'engine', 'model'])
+    assert.equal(status.ready, true)
+  }
 })
 
 test('partial downloads and missing support cannot complete a model bundle', async () => {
   const status = await fixture({ engine: true, installed: sft.slice(1, 3), partial: 'moss-sft-dit' })(settings)
   assert.equal(status.ready, false)
   assert.equal(status.steps.find((step) => step.id === 'model').status, 'partial')
-  assert.match(status.steps[3].detail, /2\/4/)
-  assert.equal(status.steps[3].sizeBytes, catalog.models.filter((model) => ['moss-sft-dit', 'moss-pipeline'].includes(model.id)).reduce((sum, model) => sum + model.size_bytes, 0))
+  assert.match(status.steps[2].detail, /2\/4/)
+  assert.equal(status.steps[2].sizeBytes, catalog.models.filter((model) => ['moss-sft-dit', 'moss-pipeline'].includes(model.id)).reduce((sum, model) => sum + model.size_bytes, 0))
 })
 
 test('an installed Base bundle satisfies the guide without forcing another SFT download', async () => {
@@ -68,22 +67,22 @@ test('a partially prepared Base bundle reuses its existing main model', async ()
   const status = await fixture({ engine: true, installed: ['moss-base-dit', 'flux2-vae-small'] })(settings)
   assert.equal(status.bundleId, 'moss-base')
   assert.equal(status.steps.find((step) => step.id === 'model').status, 'partial')
-  assert.match(status.steps[3].detail, /2\/4/)
+  assert.match(status.steps[2].detail, /2\/4/)
   assert.equal(status.ready, false)
 })
 
 test('a complete legacy model is recognized while macOS still requires an NVIDIA host', async () => {
   const status = await fixture({ engine: true, legacy: true, platform: 'darwin', noGpu: true })(settings)
   assert.equal(status.ready, false)
-  assert.match(status.steps[1].detail, /SSH/)
-  assert.ok(status.steps.slice(3).every((step) => step.status === 'ok'))
+  assert.match(status.steps[0].detail, /SSH/)
+  assert.ok(status.steps.slice(2).every((step) => step.status === 'ok'))
 })
 
 test('remote readiness never combines local models with a remote engine', async () => {
   const status = await fixture({ engine: true, installed: sft })(settings, 'ssh-a')
   assert.equal(status.hostId, 'ssh-a')
   assert.equal(status.ready, false)
-  assert.ok(status.steps.slice(3).every((step) => step.status === 'missing'))
+  assert.ok(status.steps.slice(2).every((step) => step.status === 'missing'))
 })
 
 test('the selected remote host can complete its own checklist', async () => {

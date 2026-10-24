@@ -502,11 +502,11 @@ export interface LaunchCase {
 }
 
 export interface OnboardingStep {
-  id: 'python' | 'device' | 'engine' | 'model'
+  id: 'device' | 'engine' | 'model'
   status: 'ok' | 'missing' | 'partial'
   title: string
   detail: string
-  action: 'install-python' | 'devices' | 'engines' | 'models'
+  action: 'devices' | 'engines' | 'models'
   modelIds?: string[]
   sizeBytes?: number
 }

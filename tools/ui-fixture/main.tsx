@@ -2,9 +2,9 @@ import './styles.css'
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
-import { Events, Ipc } from '../../apps/desktop/src/shared/channels'
+import { Ipc } from '../../apps/desktop/src/shared/channels'
 import { schemas } from '../../apps/desktop/src/shared/schemas'
-import type { InstanceInfo, ManagedHost, OnboardingStatus, PythonInstallState, Settings } from '../../apps/desktop/src/shared/types'
+import type { InstanceInfo, ManagedHost, OnboardingStatus, Settings } from '../../apps/desktop/src/shared/types'
 import { Field, Input, Modal, Select, Sheet, Spinner, Switch, Textarea, ToastProvider, useToast } from '../../apps/desktop/src/renderer/src/components/ui'
 import { SettingsPage } from '../../apps/desktop/src/renderer/src/pages/Settings'
 import { StudioPage } from '../../apps/desktop/src/renderer/src/pages/Studio'
@@ -20,18 +20,14 @@ let fixtureHosts: ManagedHost[] = []
 let failOobeSave = false
 let oobeComplete = false
 let oobeNeedsDevice = false
-let oobePythonReady = true
-let pythonInstallState: PythonInstallState | null = null
-let pythonInstallAttempts = 0
-let finishPythonInstall: (() => void) | null = null
 const fixtureListeners = new Map<string, Set<(data: unknown) => void>>()
-const oobeSteps = ['python', 'device', 'engine', 'model'] as const
+const oobeSteps = ['device', 'engine', 'model'] as const
 function onboarding(hostId = 'local'): OnboardingStatus {
-  return { hostId, bundleId: 'fixture-bundle', bundleName: 'MOSS-Image SFT', ready: oobeComplete && hostId === 'local' && oobePythonReady, checkedAt: '', steps: oobeSteps.map((id, index) => ({
-    id, title: ['Python', '推理设备', 'MossInfer 引擎', '模型'][index],
-    detail: [oobePythonReady ? '本机 Python 3.12.14' : '本机未找到 Python 3.10+，可安装内置 Python', 'NVIDIA GPU', '下载 MossInfer 引擎', 'MOSS-Image SFT · 0/4 个组件已就绪，需准备主模型、文本编码器、VAE 与配置'][index],
-    status: (id === 'python' ? oobePythonReady : oobeComplete && hostId === 'local' || id === 'device' && !oobeNeedsDevice) ? 'ok' : 'missing',
-    action: index === 0 ? 'install-python' : index === 1 ? 'devices' : index === 2 ? 'engines' : 'models',
+  return { hostId, bundleId: 'fixture-bundle', bundleName: 'MOSS-Image SFT', ready: oobeComplete && hostId === 'local', checkedAt: '', steps: oobeSteps.map((id, index) => ({
+    id, title: ['推理设备', 'MossInfer 引擎', '模型'][index],
+    detail: ['NVIDIA GPU', '下载 MossInfer 引擎', 'MOSS-Image SFT · 0/4 个组件已就绪，需准备主模型、文本编码器、VAE 与配置'][index],
+    status: oobeComplete && hostId === 'local' || index === 0 && !oobeNeedsDevice ? 'ok' : 'missing',
+    action: index === 0 ? 'devices' : index === 1 ? 'engines' : 'models',
     modelIds: id === 'model' ? ['dit', 'text', 'vae', 'support'] : undefined,
     sizeBytes: id === 'model' ? 27_199_050_000 : undefined,
   })) }
@@ -55,29 +51,6 @@ window.clover = {
   },
   async invoke<T>(channel: string, payload?: unknown): Promise<T> {
     if (channel === Ipc.onboardingStatus) return { ok: true, data: onboarding((payload as { hostId?: string })?.hostId) } as T
-    if (channel === Ipc.pythonInstallState) return { ok: true, data: pythonInstallState } as T
-    if (channel === Ipc.pythonInstall) {
-      pythonInstallAttempts++
-      const publish = (state: PythonInstallState): void => {
-        pythonInstallState = state
-        fixtureListeners.get(Events.pythonInstall)?.forEach(listener => listener(state))
-      }
-      if (pythonInstallAttempts === 1) {
-        publish({ phase: 'error', bytes: 0, totalBytes: 0, percent: 0, error: 'Fixture Python download failed' })
-      } else {
-        publish({ phase: 'downloading', bytes: 5, totalBytes: 10, percent: 50, version: '3.12.14' })
-        await new Promise<void>(resolve => { finishPythonInstall = () => {
-          oobePythonReady = true
-          savedSettings = { ...savedSettings, pythonPath: '/fixture/managed/python' }
-          useApp.setState({ settings: savedSettings })
-          fixtureListeners.get(Events.settingsChanged)?.forEach(listener => listener(savedSettings))
-          publish({ phase: 'done', bytes: 10, totalBytes: 10, percent: 100, version: '3.12.14', path: savedSettings.pythonPath! })
-          finishPythonInstall = null
-          resolve()
-        } })
-      }
-      return { ok: true, data: pythonInstallState } as T
-    }
     if (channel === Ipc.mossInferDownloadState) return { ok: true, data: null } as T
     if (channel === Ipc.engineStatus) return { ok: true, data: { available: false, path: null } } as T
     if (channel === Ipc.engineRemoteStatus) return { ok: true, data: { online: true, available: false, path: '/fixture/engine/bin/moss-server', root: '/fixture/engine', gpu: 'Fixture GPU', checkedAt: '' } } as T
@@ -159,9 +132,6 @@ function Fixture(): React.JSX.Element {
         <button id="view-oobe" onClick={() => {
           oobeComplete = false
           oobeNeedsDevice = false
-          oobePythonReady = true
-          pythonInstallState = null
-          pythonInstallAttempts = 0
           savedSettings = { ...savedSettings, onboardingState: 'pending', onboardingHostId: 'local', uiAnimation: 'on' }
           useApp.setState({ settings: savedSettings, catalog: fixtureOobeCatalog as never, devices: fixtureDevices as never })
           document.documentElement.dataset.uiAnimation = 'on'
@@ -181,8 +151,6 @@ function Fixture(): React.JSX.Element {
           navigate('/devices')
         }}>Device setup</button>
         <button id="oobe-download" onClick={() => useApp.setState({ downloads: [{ id: 'test-download', kind: 'model', targetId: 'dit', state: 'running', bytes: 5, totalBytes: 10 } as never] })}>Download</button>
-        <button id="oobe-needs-python" onClick={() => { oobePythonReady = false; setOobeKey(value => value + 1) }}>No Python</button>
-        <button id="oobe-python-installed" onClick={() => finishPythonInstall?.()}>Python installed</button>
         <button id="oobe-fail-save" onClick={() => { failOobeSave = true }}>Fail save</button>
         <button id="view-studio" onClick={() => {
           useApp.setState({ studioPrompt: 'Fixture prompt', catalog: fixtureCatalog as never, devices: fixtureDevices as never })
