@@ -69,7 +69,7 @@ app.whenReady().then(async () => {
       return
     }
     await waitFor('Boolean(document.querySelector("#open-modal"))')
-    await checkMaterials({ evaluate, webContents: win.webContents })
+    await checkMaterials({ evaluate, waitFor, webContents: win.webContents })
     assert.equal(await evaluate('getComputedStyle(document.querySelector("#typography")).fontSize'), '10.5px')
     assert.equal(await evaluate('getComputedStyle(document.querySelector("#button-typography")).fontSize'), '11px')
     assert.equal(await evaluate('getComputedStyle(document.querySelector("#button-typography")).fontWeight'), '500')

@@ -40,6 +40,12 @@ UI：
 pnpm test:ui
 ```
 
+材质回归同时检查构建后的 `backdrop-filter` 和动画中间帧的实际像素。
+覆盖页面淡入、浮层淡入/淡出与反向重开、关闭动效时的清理，以及 100%/150%/200% renderer 缩放。
+共用玻璃表面（`.glass`、`.glass-thin`、`.glass-strong`、`.content-surface`）的祖先不参与透明度动画，
+位移保留在容器，透明度作用于玻璃表面自身和不包含玻璃子层的内容组，避免截断背景采样。
+卡片淡出时背景自然显露；检查的是模糊贡献随透明度连续变化，而非整个动画期间突然失效。
+
 MossInfer fake sidecar：
 
 ```powershell

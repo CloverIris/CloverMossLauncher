@@ -8,13 +8,36 @@ import {
 
 type MotionPreset = 'page' | 'fade' | 'flyout' | 'dialog' | 'sheet' | 'toast'
 
-const closedFrames: Record<MotionPreset, Keyframe> = {
-  page: { opacity: 0, transform: 'translateY(8px)' },
-  fade: { opacity: 0 },
-  flyout: { opacity: 0, transform: 'translateY(-4px) scale(0.985)' },
-  dialog: { opacity: 0, transform: 'translateY(8px) scale(0.985)' },
-  sheet: { opacity: 0, transform: 'translateX(12px)' },
-  toast: { opacity: 0, transform: 'translateY(6px)' },
+const closedTransforms: Record<Exclude<MotionPreset, 'fade'>, string> = {
+  page: 'translateY(8px)',
+  flyout: 'translateY(-4px) scale(0.985)',
+  dialog: 'translateY(8px) scale(0.985)',
+  sheet: 'translateX(12px)',
+  toast: 'translateY(6px)',
+}
+
+type MotionSnapshot = Map<Element, Keyframe>
+
+function fadeTargets(element: HTMLElement): Element[] {
+  // Keep ancestors of our shared glass surfaces at opacity 1: a translucent
+  // ancestor is a backdrop root and cuts off the image the card needs to blur.
+  // Fade each surface itself and the largest remaining content groups instead.
+  const branches = new Set<Element>()
+  for (const surface of element.querySelectorAll('.glass, .glass-thin, .glass-strong, .content-surface')) {
+    for (let parent = surface.parentElement; parent && !branches.has(parent); parent = parent.parentElement) {
+      branches.add(parent)
+      if (parent === element) break
+    }
+  }
+  const targets: Element[] = []
+  const pending: Element[] = [element]
+  while (pending.length) {
+    const current = pending.pop()!
+    if (branches.has(current)) {
+      for (const child of current.children) pending.push(child)
+    } else targets.push(current)
+  }
+  return targets
 }
 
 const listeners = new Set<() => void>()
@@ -56,7 +79,7 @@ function playMotion(
   element: HTMLElement,
   preset: MotionPreset,
   entering: boolean,
-  interrupted: { current: Keyframe | undefined },
+  interrupted: { current: MotionSnapshot | undefined },
   onFinished?: () => void,
 ): () => void {
   const style = getComputedStyle(element)
@@ -64,33 +87,54 @@ function playMotion(
   const parsedDuration = Number.parseFloat(durationValue)
   const duration = Number.isFinite(parsedDuration) ? parsedDuration * (durationValue.endsWith('ms') ? 1 : 1000) : 180
   const ease = style.getPropertyValue('--motion-ease').trim() || 'ease-out'
-  const visible: Keyframe = preset === 'fade' ? { opacity: 1 } : { opacity: 1, transform: 'none' }
-  const from = interrupted.current ?? (entering ? closedFrames[preset] : visible)
+  const targets = fadeTargets(element)
+  const plans = new Map<Element, { closed: Keyframe; visible: Keyframe }>()
+  if (preset !== 'fade') {
+    plans.set(element, { closed: { transform: closedTransforms[preset] }, visible: { transform: 'none' } })
+  }
+  for (const target of targets) {
+    const plan = plans.get(target) ?? { closed: {}, visible: {} }
+    plan.closed.opacity = 0
+    plan.visible.opacity = 1
+    plans.set(target, plan)
+  }
+  const animations = Array.from(plans, ([target, { closed, visible }]) => {
+    const sampled = interrupted.current?.get(target)
+    const from: Keyframe = {}
+    for (const property of ['opacity', 'transform'] as const) {
+      if (closed[property] !== undefined) from[property] = sampled?.[property] ?? (entering ? closed[property] : visible[property])
+    }
+    return { target, closed, animation: target.animate([from, entering ? visible : closed], { duration, easing: ease, fill: 'both' }) }
+  })
   interrupted.current = undefined
-  const animation = element.animate([from, entering ? visible : closedFrames[preset]], { duration, easing: ease, fill: 'both' })
   let finished = false
   const finish = (): void => {
     if (finished) return
     finished = true
     window.clearTimeout(timer)
-    if (entering) animation.cancel()
-    else animation.finish()
+    for (const { animation } of animations) {
+      if (entering) animation.cancel()
+      else animation.finish()
+    }
     onFinished?.()
   }
   // Hidden windows may stop advancing their animation timeline. Never let that
   // hold a modal in the top layer or retain a dismissed surface indefinitely.
   const timer = window.setTimeout(finish, duration + 60)
-  void animation.finished.then(finish, () => undefined)
+  void Promise.all(animations.map(({ animation }) => animation.finished)).then(finish, () => undefined)
   return () => {
     if (!finished) {
       finished = true
-      const current = getComputedStyle(element)
-      interrupted.current = preset === 'fade'
-        ? { opacity: current.opacity }
-        : { opacity: current.opacity, transform: current.transform }
+      interrupted.current = new Map(animations.map(({ target, closed }) => {
+        const current = getComputedStyle(target)
+        const frame: Keyframe = {}
+        if (closed.opacity !== undefined) frame.opacity = current.opacity
+        if (closed.transform !== undefined) frame.transform = current.transform
+        return [target, frame]
+      }))
     }
     window.clearTimeout(timer)
-    animation.cancel()
+    for (const { animation } of animations) animation.cancel()
   }
 }
 
@@ -101,7 +145,7 @@ export function useMotionPresence(open: boolean, preset: MotionPreset, onExited?
   if (open && !retained) setRetained(true)
   const ref = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(false)
-  const interrupted = useRef<Keyframe | undefined>(undefined)
+  const interrupted = useRef<MotionSnapshot | undefined>(undefined)
   const exited = useRef(onExited)
   exited.current = onExited
 
@@ -156,7 +200,7 @@ export function MotionPanel({
   const ref = useRef<HTMLDivElement>(null)
   const enabled = useUiAnimationEnabled()
   const previous = useRef<string | number | undefined>(undefined)
-  const interrupted = useRef<Keyframe | undefined>(undefined)
+  const interrupted = useRef<MotionSnapshot | undefined>(undefined)
   useLayoutEffect(() => {
     const changed = previous.current !== transitionKey
     previous.current = transitionKey

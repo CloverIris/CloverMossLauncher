@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { Ipc } from '../../apps/desktop/src/shared/channels'
 import { schemas } from '../../apps/desktop/src/shared/schemas'
 import type { InstanceInfo, ManagedHost, OnboardingStatus, Settings } from '../../apps/desktop/src/shared/types'
-import { Field, Input, Modal, Select, Sheet, Spinner, Switch, Textarea, ToastProvider, useToast } from '../../apps/desktop/src/renderer/src/components/ui'
+import { Card, Field, Input, Modal, Select, Sheet, Spinner, Switch, Textarea, ToastProvider, useToast } from '../../apps/desktop/src/renderer/src/components/ui'
 import { SettingsPage } from '../../apps/desktop/src/renderer/src/pages/Settings'
 import { StudioPage } from '../../apps/desktop/src/renderer/src/pages/Studio'
 import { useApp } from '../../apps/desktop/src/renderer/src/store'
@@ -91,6 +91,28 @@ function ToastProbe(): React.JSX.Element {
   return <button id="push-toast" onClick={() => toast.push('Fixture toast')}>Toast</button>
 }
 
+function MaterialMotionProbe(): React.JSX.Element {
+  const [revision, setRevision] = useState(0)
+  const [layer, setLayer] = useState(false)
+  const [open, setOpen] = useState(false)
+  const card = (id: string): React.JSX.Element => (
+    <div style={{ height: '100%' }}>
+      <Card id={id} style={{ height: '100%', background: 'transparent' }}>
+        <p>Material content</p>
+      </Card>
+    </div>
+  )
+  return (
+    <div id="material-motion-probe" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'repeating-linear-gradient(90deg,#eee 0 8px,#333 8px 16px)', '--motion-normal': '60000ms' } as React.CSSProperties}>
+      <button id="material-restart" onClick={() => setRevision((value) => value + 1)}>Restart</button>
+      <button id="material-layer" onClick={() => { setLayer(true); setOpen(true) }}>Layer</button>
+      <button id="material-toggle" onClick={() => setOpen((value) => !value)}>Toggle</button>
+      {!layer ? <MotionPanel id="material-page" transitionKey={revision} style={{ position: 'absolute', inset: '15%' }}>{card('material-page-card')}</MotionPanel> : null}
+      {layer ? <Presence id="material-layer-panel" open={open} preset="flyout" style={{ position: 'absolute', inset: '15%' }}>{card('material-layer-card')}</Presence> : null}
+    </div>
+  )
+}
+
 const fixtureInstances = ['instance-a', 'instance-b'].map((id) => ({
   id, name: id, runtimeState: 'ready', placement: { kind: 'local' },
 })) as InstanceInfo[]
@@ -127,6 +149,7 @@ function Fixture(): React.JSX.Element {
     <>
       <nav className="flex gap-2">
         <button id="view-controls" onClick={() => setView('controls')}>Controls</button>
+        <button id="view-materials" onClick={() => setView('materials')}>Materials</button>
         <button id="view-settings" onClick={() => setView('settings')}>Settings</button>
         <button id="view-devices" onClick={() => setView('devices')}>Devices</button>
         <button id="view-oobe" onClick={() => {
@@ -171,7 +194,7 @@ function Fixture(): React.JSX.Element {
       <output id="motion-enabled" hidden>{animate ? 'on' : 'off'}</output>
       {view === 'oobe' ? <ToastProvider><OobeProbe key={oobeKey} /></ToastProvider> : null}
       <MotionPanel transitionKey={view} data-testid="page-motion" className={view === 'oobe' ? 'hidden' : undefined}>
-        {view === 'settings' ? <SettingsPage /> : view === 'devices' ? <ToastProvider><DevicesPage /></ToastProvider> : view === 'studio' ? <ToastProvider><StudioPage /></ToastProvider> : (
+        {view === 'materials' ? <MaterialMotionProbe /> : view === 'settings' ? <SettingsPage /> : view === 'devices' ? <ToastProvider><DevicesPage /></ToastProvider> : view === 'studio' ? <ToastProvider><StudioPage /></ToastProvider> : (
           <div style={{ transform: 'translateX(20px)', backdropFilter: 'blur(2px)', width: 400, overflow: 'hidden' }}>
             <input id="typography" className="text-[10.5px] font-mono leading-5" />
             <button id="button-typography" className="text-[11px] font-medium">Typography</button>
