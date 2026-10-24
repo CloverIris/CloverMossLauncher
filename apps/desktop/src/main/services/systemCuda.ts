@@ -50,7 +50,7 @@ export async function detectSystemCuda(): Promise<SystemCudaStatus> {
       if (/libcublasLt\.so\.(12|13)\b/.test(line)) libs.push(line.trim())
     }
     if (!libs.length) {
-      const find = await run('find', ['/usr/local/cuda', '/usr/lib', '/lib', '-name', 'libcublasLt.so.*'], { timeoutMs: 6000 })
+      const find = await run('find', ['/usr/local/cuda', '/usr/lib', '/lib', '/opt/cuda/lib64', '/opt/cuda/targets', '-name', 'libcublasLt.so.*'], { timeoutMs: 6000 })
       for (const line of find.stdout.split('\n')) if (line.trim()) libs.push(line.trim())
     }
   }

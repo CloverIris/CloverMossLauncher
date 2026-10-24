@@ -1,4 +1,4 @@
-import { Cpu, Download, HardDrive, RefreshCw, ShieldCheck, SquareTerminal, X } from 'lucide-react'
+import { Cpu, Download, HardDrive, RefreshCw, ShieldCheck, SlidersHorizontal, SquareTerminal, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Events, Ipc } from '@shared/channels'
@@ -7,7 +7,7 @@ import { call, onEvent } from '../lib/api'
 import { useApp } from '../store'
 import { openWindow } from '../lib/windows'
 import { bytes, dateTime } from '../lib/format'
-import { Button, Card, IconButton, Input, Modal, Pill, Spinner, useToast } from '../components/ui'
+import { Button, Card, IconButton, Input, Modal, Pill, Segmented, Spinner, useToast } from '../components/ui'
 
 interface LocalEngineInfo {
   available: boolean
@@ -20,6 +20,7 @@ export function EnginePage(): React.JSX.Element {
   const location = useLocation()
   const toast = useToast()
   const settings = useApp((state) => state.settings)
+  const saveSettings = useApp((state) => state.saveSettings)
   const [githubToken, setGithubToken] = useState(settings?.githubToken ?? '')
   const [engine, setEngine] = useState<LocalEngineInfo | null>(null)
   const [download, setDownload] = useState<MossInferDownloadState | null>(null)
@@ -283,9 +284,19 @@ export function EnginePage(): React.JSX.Element {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <Button tone="ghost" onClick={() => void installCudaWheels()} disabled={busy || !engine?.available}>
-              <ShieldCheck className="size-3.5" /> 补 CUDA 库
-            </Button>
+            {(() => {
+              // Only offer the repair when the installed engine is the system-cuda variant
+              // AND no usable cuBLASLt is in sight (probe result wins over the preflight list).
+              const probed = (probe?.['probe'] as { cublaslt?: { source?: string; error?: string } } | undefined)?.cublaslt
+              const probeOk = Boolean(probed && !probed.error && probed.source)
+              const preflightOk = Boolean(preflight && preflight.cublasLt.length > 0)
+              const needsCudaLibs = Boolean(engine?.available) && (engine?.path?.includes('system-cuda') ?? false) && !probeOk && !preflightOk
+              return needsCudaLibs ? (
+                <Button tone="ghost" onClick={() => void installCudaWheels()} disabled={busy || !engine?.available}>
+                  <ShieldCheck className="size-3.5" /> 补 CUDA 库
+                </Button>
+              ) : null
+            })()}
             <Button tone="secondary" onClick={() => void probeEngine()} disabled={busy || !engine?.available}>
               {busy ? <Spinner className="size-3.5" /> : <SquareTerminal className="size-3.5" />} 检测 hello
             </Button>
@@ -349,6 +360,43 @@ export function EnginePage(): React.JSX.Element {
         {probe ? (
           <pre className="mt-3 max-h-52 overflow-auto rounded-lg bg-black/25 p-3 font-mono text-[9px] leading-4 text-[var(--color-text-secondary)]">{JSON.stringify(probe, null, 2)}</pre>
         ) : null}
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-[14px] font-semibold">生成质量</h2>
+            <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">MossInfer 引擎档位，改动在下一次引擎加载时生效（配置变化会自动重新 load）。</p>
+          </div>
+          <SlidersHorizontal className="size-4 text-[var(--color-text-tertiary)]" />
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Segmented
+            label="质量档（tier）"
+            value={settings?.mossInferTier ?? 'auto'}
+            onChange={(mossInferTier) => void saveSettings({ mossInferTier }).then(() => toast.push('质量档已保存', 'success'))}
+            options={[
+              { value: 'auto', label: 'Auto' },
+              { value: 'reference', label: 'Reference · bf16' },
+              { value: 'high', label: 'High · 8bit 注意力' },
+              { value: 'turbo', label: 'Turbo · INT4' },
+            ]}
+          />
+          <Segmented
+            label="显存模式（每次生成自动按剩余显存规划）"
+            value={settings?.mossInferMemoryMode ?? 'balanced'}
+            onChange={(mossInferMemoryMode) => void saveSettings({ mossInferMemoryMode }).then(() => toast.push('显存模式已保存', 'success'))}
+            options={[
+              { value: 'min_memory', label: '省显存' },
+              { value: 'balanced', label: '均衡 · 推荐' },
+              { value: 'max_speed', label: '最快' },
+            ]}
+          />
+        </div>
+        <p className="mt-2 text-[9px] leading-4 text-[var(--color-text-tertiary)]">
+          三个模式都会自动适配当前空闲显存，装不下就流式加载；区别只在主机内存目标（4 GiB / 8 GiB / 尽量用满）。
+          turbo 只接受 INT4 DiT 单文件（需绑定 dit_file）；auto 对 bf16 bundle 实际跑 reference。实际运行的档位以任务报告为准。
+        </p>
       </Card>
 
       <Card className="p-4">

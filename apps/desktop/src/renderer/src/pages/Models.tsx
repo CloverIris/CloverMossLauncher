@@ -64,6 +64,52 @@ const categories = [
 ] as const
 type Entry = { kind: 'model'; value: ModelEntry } | { kind: 'adapter'; value: AdapterEntry }
 
+/** MossInfer 引擎视角的组件兼容性分层。 */
+type EngineCompat =
+  | { kind: 'bindable'; label: string; hint?: undefined }
+  | { kind: 'override'; label: string; hint: string }
+  | { kind: 'legacy'; label: string; hint: string }
+
+function engineCompat(model: ModelEntry): EngineCompat {
+  const legacy = model.precision === 'fp16' || model.tags.includes('fixed')
+  if ((model.format ?? 'diffusers') === 'diffusers') {
+    if (legacy) {
+      return {
+        kind: 'legacy',
+        label: '旧 PyTorch 链路',
+        hint: 'KBlueLeaf fp16-fixed，面向旧 Python runner（2080Ti / V100）；仍可绑定 fp16 bundle，MossInfer 建议改用 bf16 组合。',
+      }
+    }
+    return { kind: 'bindable', label: '可绑定 bundle' }
+  }
+  if (legacy) {
+    return {
+      kind: 'legacy',
+      label: '旧 PyTorch 链路',
+      hint: 'KBlueLeaf fp16-fixed 单文件，供旧 PyTorch 链路 / ComfyUI 使用；MossInfer 建议改用 bf16 bundle。',
+    }
+  }
+  const file =
+    model.role === 'dit'
+      ? 'dit_file'
+      : model.role === 'text_encoder'
+        ? 'text_encoder_file'
+        : 'vae_file'
+  const tier =
+    model.precision === 'int8'
+      ? model.role === 'dit'
+        ? 'high 档 · INT8 GEMM'
+        : 'high 档配套 · INT8 编码器'
+      : model.precision === 'int4'
+        ? 'turbo 档 · INT4（需显式选择）'
+        : model.precision === 'w4a8'
+          ? 'W4A8 量化文本编码器'
+          : model.precision === 'bf16'
+            ? 'reference 档精度'
+            : '引擎级覆盖'
+  return { kind: 'override', label: '引擎单文件覆盖', hint: `MossInfer · ${file} · ${tier}` }
+}
+
 export function ModelsPage(): React.JSX.Element {
   const location = useLocation()
   const catalog = useApp((s) => s.catalog)
@@ -130,7 +176,11 @@ export function ModelsPage(): React.JSX.Element {
     setRemoteModelPath(remoteHost.modelPath ?? '')
   }, [remoteHost?.id])
 
-  const bundle = catalog?.bundles?.find((b) => b.id === bundleId) ?? catalog?.bundles?.[0]
+  const bundle = catalog?.bundles?.find((b) => b.id === bundleId) ?? catalog?.bundles?.find((b) => b.recommended) ?? catalog?.bundles?.[0]
+  const engineLabel =
+    settings?.inferenceBackend === 'mossinfer'
+      ? `MossInfer · ${settings?.mossInferTier ?? 'auto'} 档`
+      : 'Python runner'
   const bundleModels = bundle
     ? [...Object.values(bundle.components), bundle.support]
         .map((id) => catalog?.models.find((m) => m.id === id))
@@ -353,7 +403,7 @@ export function ModelsPage(): React.JSX.Element {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">模型库</h1>
           <p className="mt-1 text-[12px] text-[var(--color-text-secondary)]">
-            按需下载，自由组合。编码器与 VAE 只需准备一次。
+            MossInfer 按 bundle 组合原地加载模型；单文件组件可作引擎级覆盖。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -415,7 +465,7 @@ export function ModelsPage(): React.JSX.Element {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            {remoteCategory !== 'adapter' ? <select aria-label="远端组件格式" value={format} onChange={(event) => setFormat(event.target.value)} className="model-select"><option value="diffusers">Diffusers · 可本地运行</option><option value="comfyui">ComfyUI · 仅下载</option><option value="all">全部格式</option></select> : null}
+            {remoteCategory !== 'adapter' ? <select aria-label="远端组件格式" value={format} onChange={(event) => setFormat(event.target.value)} className="model-select"><option value="diffusers">Diffusers · 可绑定 bundle</option><option value="comfyui">ComfyUI 单文件 · MossInfer 覆盖</option><option value="all">全部格式</option></select> : null}
             <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><input type="checkbox" checked={installedOnly} onChange={(event) => setInstalledOnly(event.target.checked)} className="accent-[var(--color-accent-500)]" />仅已部署</label>
           </div>
           <span className="text-[11px] text-[var(--color-text-tertiary)]">{remoteScan ? `${remoteScan.root} · ${remoteScan.files} 个文件` : '扫描远端模型'}</span>
@@ -467,31 +517,14 @@ export function ModelsPage(): React.JSX.Element {
       </div>
 
       <div data-oobe-host="local" className={mode === 'local' ? 'space-y-5' : 'hidden'}>
-        <Card className="p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2"><HardDrive className="size-4 text-accent-300" /><h2 className="text-[14px] font-semibold">本地模型目录</h2></div>
-              <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">下载、导入和引用都使用这个根目录；修改后会刷新模型库。</p>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              <Button tone="ghost" onClick={() => void openLocalRoot()} disabled={localBusy}>打开目录</Button>
-              <Button tone="ghost" onClick={() => void importFolder()} disabled={busy !== null || localBusy}>导入目录</Button>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <Input value={localRoot} onChange={(event) => setLocalRoot(event.target.value)} placeholder={settings?.modelsRoot ?? '默认 ~/.mossstudio/models'} className="min-w-[240px] flex-1 font-mono text-[10px]" />
-            <Button tone="secondary" onClick={() => void pickLocalRoot()} disabled={localBusy}>选择目录</Button>
-            <Button tone="primary" onClick={() => void saveLocalRoot()} disabled={localBusy}>保存路径</Button>
-          </div>
-        </Card>
-
       {bundle ? (
         <Card data-oobe="model" data-oobe-hint-title="推荐组合" data-oobe-hint-position="bottom" data-oobe-hint="首次使用建议选择推荐组合，点击「补齐组件」即可下载主模型、Qwen 编码器、VAE 与运行配置，已有组件会复用。" className="overflow-hidden">
           <div data-oobe-hint-target className="flex flex-wrap items-start justify-between gap-4 px-5 pt-4">
             <div className="min-w-0">
-              <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
-                <Layers className="size-3.5 text-accent-400" /> 推荐组合{' '}
-                <span className="text-[var(--color-text-tertiary)]">· 本地 Diffusers / ComfyUI</span>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
+                <Layers className="size-3.5 text-accent-400" /> 推荐组合 · MossInfer bundle{' '}
+                <span className="text-[var(--color-text-tertiary)]">· 引擎原地读取，无需转换</span>
+                {bundle.recommended ? <Pill tone="accent">官方推荐</Pill> : null}
               </div>
               <select
                 aria-label="推荐模型组合"
@@ -528,6 +561,18 @@ export function ModelsPage(): React.JSX.Element {
                 {missing.length ? `还需约 ${bytes(remaining)}` : '可在实例详情绑定使用'}
               </span>
             </div>
+          </div>
+          <div className="mx-5 mt-3 flex items-center gap-2.5">
+            <Pill tone={missing.length ? 'amber' : 'accent'}>
+              {missing.length ? `缺 ${missing.length} 项` : 'bundle 完整'}
+            </Pill>
+            <ProgressBar
+              value={percent(bundleModels.filter((m) => m.installed).length, bundleModels.length)}
+              className="max-w-40 flex-1"
+            />
+            <span className="text-[10px] tabular-nums text-[var(--color-text-tertiary)]">
+              已就绪 {bundleModels.filter((m) => m.installed).length} / {bundleModels.length}
+            </span>
           </div>
           <div className="model-composition mx-5 my-4 grid grid-cols-1 divide-y divide-[var(--color-border-subtle)] rounded-[6px] border border-[var(--color-border-subtle)] md:grid-cols-3 md:divide-x md:divide-y-0">
             {(['dit', 'textEncoder', 'vae'] as const).map((key, i) => {
@@ -567,13 +612,33 @@ export function ModelsPage(): React.JSX.Element {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-subtle)] px-5 py-2.5 text-[11px] text-[var(--color-text-tertiary)]">
             <span>
-              已就绪 {bundleModels.filter((m) => m.installed).length} / {bundleModels.length}{' '}
-              项，包含运行配置
+              含运行配置（{catalog?.models.find((m) => m.id === bundle.support)?.name ?? bundle.support}
+              ）；bf16 bundle 对应 MossInfer auto / reference 档
             </span>
-            <span>切换主模型时，复用已下载的编码器与 VAE</span>
+            <span>
+              当前引擎：{engineLabel} · 切换主模型时复用已下载的编码器与 VAE
+            </span>
           </div>
         </Card>
       ) : null}
+
+        <Card className="p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2"><HardDrive className="size-4 text-accent-300" /><h2 className="text-[14px] font-semibold">本地模型目录</h2></div>
+              <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">下载、导入和引用都使用这个根目录；修改后会刷新模型库。</p>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <Button tone="ghost" onClick={() => void openLocalRoot()} disabled={localBusy}>打开目录</Button>
+              <Button tone="ghost" onClick={() => void importFolder()} disabled={busy !== null || localBusy}>导入目录</Button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <Input value={localRoot} onChange={(event) => setLocalRoot(event.target.value)} placeholder={settings?.modelsRoot ?? '默认 ~/.mossstudio/models'} className="min-w-[240px] flex-1 font-mono text-[10px]" />
+            <Button tone="secondary" onClick={() => void pickLocalRoot()} disabled={localBusy}>选择目录</Button>
+            <Button tone="primary" onClick={() => void saveLocalRoot()} disabled={localBusy}>保存路径</Button>
+          </div>
+        </Card>
 
       {active.length ? (
         <Card className="overflow-hidden">
@@ -680,8 +745,8 @@ export function ModelsPage(): React.JSX.Element {
                 onChange={(e) => setFormat(e.target.value)}
                 className="model-select"
               >
-                <option value="diffusers">Diffusers · 可本地运行</option>
-                <option value="comfyui">ComfyUI · 仅下载</option>
+                <option value="diffusers">Diffusers · 可绑定 bundle</option>
+                <option value="comfyui">ComfyUI 单文件 · MossInfer 覆盖</option>
                 <option value="all">全部格式</option>
               </select>
             ) : null}
@@ -701,7 +766,8 @@ export function ModelsPage(): React.JSX.Element {
         </div>
         {format === 'comfyui' && category !== 'adapter' ? (
           <p className="text-[11px] leading-5 text-[var(--color-text-secondary)]">
-            供 ComfyUI 使用；单文件和量化组件不能绑定到本地 Diffusers 运行时。
+            单文件组件不能绑定进 bundle（绑定仅支持 Diffusers 组件）；MossInfer 可通过 dit_file / text_encoder_file / vae_file
+            在引擎级覆盖使用，界面接线后续提供。
           </p>
         ) : null}
         <MotionPanel transitionKey={`${category}:${format}:${installedOnly}`}>
@@ -712,6 +778,7 @@ export function ModelsPage(): React.JSX.Element {
                 const task = downloads.find((t) => t.kind === entry.kind && t.targetId === model.id)
                 const working = task && ['queued', 'running', 'verifying'].includes(task.state)
                 const component = entry.kind === 'model' ? entry.value : null
+                const compat = component ? engineCompat(component) : null
                 return (
                   <Card key={model.id} className="flex min-w-0 flex-col p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -724,11 +791,24 @@ export function ModelsPage(): React.JSX.Element {
                             {component?.provider === 'local'
                               ? '本地引用'
                               : component?.format === 'comfyui'
-                              ? 'ComfyUI'
+                              ? 'ComfyUI 单文件'
                               : entry.kind === 'adapter'
                                 ? entry.value.kind.toUpperCase()
                                 : 'Diffusers'}
                           </Pill>
+                          {compat ? (
+                            <Pill
+                              tone={
+                                compat.kind === 'bindable'
+                                  ? 'accent'
+                                  : compat.kind === 'override'
+                                    ? 'blue'
+                                    : 'amber'
+                              }
+                            >
+                              {compat.label}
+                            </Pill>
+                          ) : null}
                           {component ? <Pill>{component.precision.toUpperCase()}</Pill> : null}
                           {component?.tags.includes('shared') ? (
                             <span className="text-[10px] text-[var(--color-text-tertiary)]">
@@ -759,6 +839,11 @@ export function ModelsPage(): React.JSX.Element {
                     <p className="mt-3 min-h-10 text-[12px] leading-5 text-[var(--color-text-secondary)]">
                       {model.notes ?? '独立下载并管理此组件。'}
                     </p>
+                    {compat?.hint ? (
+                      <p className="mb-1 text-[10px] leading-4 text-[var(--color-text-tertiary)]">
+                        {compat.hint}
+                      </p>
+                    ) : null}
                     <details className="my-2 text-[10px] text-[var(--color-text-tertiary)]">
                       <summary className="cursor-pointer">来源与文件</summary>
                       <p className="mt-1 break-all font-mono">{model.repo}</p>
@@ -859,7 +944,10 @@ export function ModelsPage(): React.JSX.Element {
           </div>
           <p>已缓存的文件会复用；中断后可以继续，完整校验通过后才标记为可用。</p>
           {pending?.kind === 'model' && pending.value.format === 'comfyui' ? (
-            <p className="text-amber-300">此文件供 ComfyUI 使用，不能作为 Diffusers 组件绑定。</p>
+            <p className="text-amber-300">
+              单文件组件暂不能绑定进 bundle；可作为 MossInfer 引擎级覆盖组件（
+              {engineCompat(pending.value).hint ?? '引擎级覆盖'}），界面接线后续提供。
+            </p>
           ) : null}
         </div>
       </Modal>
