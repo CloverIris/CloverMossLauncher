@@ -53,6 +53,7 @@ export function TrainingPage(): React.JSX.Element {
   const [commit, setCommit] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [doctor, setDoctor] = useState<{ id: string; ok: boolean; output: string } | null>(null)
+  const [remoteInstallTarget, setRemoteInstallTarget] = useState<TrainerVersion | null>(null)
 
   const refresh = useCallback(async () => {
     const [mirrorInfo, list, hostList] = await Promise.all([
@@ -145,6 +146,10 @@ export function TrainingPage(): React.JSX.Element {
   }
 
   async function install(version: TrainerVersion): Promise<void> {
+    if (selectedHostId !== 'local') {
+      toast.push('当前训练目标是远端 host；请在上方远端版本安装环境，避免写成本机依赖', 'error')
+      return
+    }
     setBusy(version.id)
     try {
       await call<TrainerRuntimeInfo>(Ipc.trainerInstall, { id: version.id })
@@ -211,7 +216,7 @@ export function TrainingPage(): React.JSX.Element {
       await call(Ipc.trainerRemoteInstall, { hostId: version.hostId, versionId: version.id })
       setRemoteVersions(await call<TrainerVersion[]>(Ipc.trainerRemoteVersions, { hostId: remoteHostId }))
       await refresh()
-      toast.push('远端训练环境已就绪', 'success')
+      toast.push(`远端训练环境已就绪：${sshHosts.find((host) => host.id === version.hostId)?.name ?? version.hostId}`, 'success')
     } catch (error) {
       toast.push(error instanceof Error ? error.message : String(error), 'error')
       setRemoteVersions(await call<TrainerVersion[]>(Ipc.trainerRemoteVersions, { hostId: remoteHostId }).catch(() => remoteVersions))
@@ -478,9 +483,9 @@ export function TrainingPage(): React.JSX.Element {
                   <div key={version.id} className="flex flex-wrap items-center gap-2 rounded-[5px] border border-[var(--color-border-subtle)] px-2.5 py-1.5">
                     <span className="min-w-0 flex-1 truncate text-[10px]">{version.name}</span>
                     <Pill tone={version.runtimeState === 'ready' ? 'accent' : 'amber'}>{runtimeLabel[version.runtimeState]}</Pill>
-                    <Button tone="ghost" onClick={() => void remoteInstall(version)} disabled={remoteBusy !== null}>
+                    <Button tone="secondary" onClick={() => setRemoteInstallTarget(version)} disabled={remoteBusy !== null}>
                       {remoteBusy === version.id ? <Spinner className="size-3" /> : null}
-                      安装环境
+                      安装远端环境
                     </Button>
                     <Button tone="ghost" onClick={() => void remoteCheck(version)} disabled={version.runtimeState !== 'ready' || remoteBusy !== null}>体检</Button>
                     <button type="button" onClick={() => void remoteRemove(version)} className="text-[var(--color-text-tertiary)] hover:text-red-300"><Trash2 className="size-3" /></button>
@@ -496,9 +501,9 @@ export function TrainingPage(): React.JSX.Element {
 
       <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-[14px] font-semibold">已安装的训练版本</h2>
+          <h2 className="text-[14px] font-semibold">本机训练版本</h2>
           <p className="mt-0.5 text-[10px] text-[var(--color-text-tertiary)]">
-            每个版本固定 commit + 独立 worktree，环境按依赖锁共享。
+            仅本机版本；远端 SSH 版本请在上方「SSH 远端训练器」安装。每个版本固定 commit + 独立 worktree。
           </p>
         </div>
         <IconButton label="刷新" onClick={() => void refresh()}>
@@ -541,10 +546,10 @@ export function TrainingPage(): React.JSX.Element {
                   <Button
                     tone="secondary"
                     onClick={() => void install(version)}
-                    disabled={busy === version.id}
+                    disabled={busy === version.id || selectedHostId !== 'local'}
                   >
                     {busy === version.id ? <Spinner className="size-3" /> : <Download className="size-3" />}
-                    {version.runtimeState === 'ready' ? '重装环境' : '安装环境'}
+                    {version.runtimeState === 'ready' ? '重装本机环境' : '安装本机环境'}
                   </Button>
                   <IconButton label="环境体检" onClick={() => void runDoctor(version)} disabled={version.runtimeState !== 'ready'}>
                     <Stethoscope className="size-3.5" />
@@ -569,6 +574,29 @@ export function TrainingPage(): React.JSX.Element {
           训练窗口默认使用最新版本；环境体检会运行 <code className="rounded bg-white/[0.05] px-1">kohakumoss-doctor</code>。
         </p>
       ) : null}
+
+      <Modal
+        open={Boolean(remoteInstallTarget)}
+        onClose={() => setRemoteInstallTarget(null)}
+        title="在远端安装训练环境"
+        description="依赖安装会通过 SSH 在目标主机执行，不会写入本机 Python 环境。"
+        width="max-w-lg"
+        footer={
+          <>
+            <Button tone="ghost" onClick={() => setRemoteInstallTarget(null)}>取消</Button>
+            <Button tone="primary" disabled={remoteBusy !== null} onClick={() => { const target = remoteInstallTarget; setRemoteInstallTarget(null); if (target) void remoteInstall(target) }}>在远端安装</Button>
+          </>
+        }
+      >
+        <div className="space-y-2 p-4 text-[10.5px] leading-5 text-[var(--color-text-secondary)]">
+          <div className="rounded border border-[var(--color-border-subtle)] bg-white/[0.025] p-2.5">
+            <div>主机：<span className="font-medium text-[var(--color-text)]">{sshHosts.find((host) => host.id === remoteInstallTarget?.hostId)?.name ?? remoteInstallTarget?.hostId ?? '—'}</span></div>
+            <div className="font-mono text-[9px] text-[var(--color-text-tertiary)]">{(() => { const host = sshHosts.find((item) => item.id === remoteInstallTarget?.hostId); return host ? `${host.user}@${host.host}:${host.port ?? 22}` : '—' })()}</div>
+            <div className="mt-1 break-all font-mono text-[9px] text-[var(--color-text-tertiary)]">训练器根目录：{sshHosts.find((host) => host.id === remoteInstallTarget?.hostId)?.trainerRoot ?? '—'}</div>
+          </div>
+          <p>将创建/复用该 host 的 venv，并在远端执行 <code className="rounded bg-black/25 px-1">pip install -e "$VERSIONS/…"</code>。</p>
+        </div>
+      </Modal>
 
       <Modal
         open={Boolean(doctor)}

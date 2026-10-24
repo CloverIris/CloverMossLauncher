@@ -150,6 +150,7 @@ export async function remoteInstallRuntime(
   version: TrainerVersion,
   runtime?: TrainerRuntimeInfo,
 ): Promise<TrainerRuntimeInfo> {
+  if (!version.hostId || version.hostId === 'local') throw new Error('该版本不是 SSH 远端版本，拒绝在本机安装远端依赖')
   const host = hostOf(settings, version.hostId)
   const pyproject = await sshExec(host, [remoteSetup(host), `cat "$VERSIONS/${version.id}/pyproject.toml" 2>/dev/null || true`].join('\n'), 20_000)
   const python = await sshExec(host, 'python3 --version 2>&1 || python --version 2>&1', 15_000)
@@ -226,7 +227,10 @@ export function remoteVersion(settings: Settings, hostId: string, versionId: str
 
 export function remoteVersions(settings: Settings, hostId: string): TrainerVersion[] {
   const host = getTrainingHost(settings, hostId)
-  return (host?.versions ?? []).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  if (!host) return []
+  return (host.versions ?? [])
+    .map((version) => ({ ...version, hostId: host.id, hostName: version.hostName || host.name }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 export function allRemoteVersions(settings: Settings): TrainerVersion[] {
