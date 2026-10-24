@@ -1104,6 +1104,94 @@ app.whenReady().then(async () => {
     return
   }
 
+  if (scenario === 'devdata-download') {
+    // Runs on .dev-data (no tmp redirect): installs the engine where the dev app will find it.
+    try {
+      const { downloadMossInfer } = await import('./services/mossInferDownload')
+      const channel = (process.argv.find((a) => a.startsWith('--channel='))?.split('=')[1] ?? 'stable') as 'stable' | 'dev'
+      const state = await downloadMossInfer(channel)
+      console.log(
+        JSON.stringify(
+          {
+            scenario: 'devdata-download',
+            phase: state.phase,
+            version: state.version,
+            variant: state.variant,
+            serverPath: state.serverPath,
+            cublaslt: state.cublaslt,
+            note: state.note,
+            error: state.error,
+          },
+          null,
+          2,
+        ),
+      )
+      app.exit(state.phase === 'done' ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (scenario === 'devdata-mossinfer-real') {
+    // Runs on .dev-data: the linked model farm + real instance binding + installed engine.
+    try {
+      const settings = getSettings()
+      const serverPath = process.env.MOSS_SERVER ?? settings.mossInferServerPath ?? ''
+      if (!serverPath || !existsSync(serverPath)) {
+        console.log(JSON.stringify({ scenario: 'devdata-mossinfer-real', skipped: 'no engine (run devdata-download first)' }))
+        app.exit(0)
+        return
+      }
+      updateSettings({ inferenceBackend: 'mossinfer', mossInferServerPath: serverPath })
+      const [instance] = await listInstances()
+      if (!instance) throw new Error('.dev-data 里没有实例，先跑 --scenario=create')
+      const catalog = await getCatalog(getSettings(), true)
+      const components = ['moss-sft-dit', 'qwen35-encoder', 'flux2-vae-small', 'moss-pipeline'].map((id) => ({
+        id,
+        state: catalog.models.find((m) => m.id === id)?.installState ?? 'absent',
+      }))
+      const job = await startJob({
+        instanceId: instance.id,
+        prompt: 'a red apple on a wooden table',
+        negativePrompt: '',
+        width: 256,
+        height: 256,
+        steps: 4,
+        cfg: 3,
+        seed: 7,
+        mode: 'runner',
+      })
+      const done = await waitForJob(job.id, 600_000)
+      const output = done.outputs?.[0]
+      const ok = done.state === 'succeeded' && !!output && existsSync(output.path) &&
+        components.every((c) => c.state === 'ready')
+      console.log(
+        JSON.stringify(
+          {
+            scenario: 'devdata-mossinfer-real',
+            instance: instance.id,
+            components,
+            state: done.state,
+            engine: done.engine,
+            bundleUsed: done.modelSnapshot != null,
+            outputs: done.outputs,
+            error: done.error,
+            ok,
+          },
+          null,
+          2,
+        ),
+      )
+      app.exit(ok ? 0 : 1)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
   if (scenario === 'download-test') {
     try {
       const task = await downloadCustomModel('hf-internal-testing/tiny-random-gpt2', getSettings())
