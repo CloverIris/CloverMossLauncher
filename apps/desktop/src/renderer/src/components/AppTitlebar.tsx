@@ -17,6 +17,17 @@ interface AppTitlebarProps {
   right?: ReactNode
 }
 
+export function TitlebarFrame({ children }: { children: ReactNode }): React.JSX.Element {
+  return (
+    <header
+      data-platform={window.clover.platform}
+      className="app-titlebar glass-thin drag relative flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)]"
+    >
+      {children}
+    </header>
+  )
+}
+
 export function AppTitlebar({
   kind,
   collapsed,
@@ -31,16 +42,9 @@ export function AppTitlebar({
   const env = useApp((state) => state.env)
   const channel = window.clover.channel
   const version = env?.appVersion ?? '0.1.0'
-  const darwin = window.clover.platform === 'darwin'
-  const win32 = window.clover.platform === 'win32'
 
   return (
-    <header
-      className={cn(
-        'glass-thin drag relative flex h-11 shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)]',
-        darwin ? 'pl-[78px] pr-2' : win32 ? 'pl-3 pr-[140px]' : 'pl-3 pr-2',
-      )}
-    >
+    <TitlebarFrame>
       <div className="no-drag flex items-center gap-1">
         {kind === 'launcher' ? (
           <IconButton
@@ -104,6 +108,6 @@ export function AppTitlebar({
         ) : null}
         {right}
       </div>
-    </header>
+    </TitlebarFrame>
   )
 }

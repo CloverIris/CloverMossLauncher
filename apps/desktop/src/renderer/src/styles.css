@@ -91,6 +91,23 @@ body {
   background: transparent;
 }
 
+.app-titlebar {
+  height: 44px;
+  padding-left: 12px;
+  padding-right: 8px;
+}
+
+.app-titlebar[data-platform="darwin"] {
+  padding-left: 78px;
+}
+
+.app-titlebar[data-platform="win32"] {
+  /* Use the native control geometry at the current DPI/window size. */
+  height: max(44px, env(titlebar-area-height, 44px));
+  padding-left: calc(env(titlebar-area-x, 0px) + 12px);
+  padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100% - 138px)) + 8px);
+}
+
 .studio-viewport[data-pan-tool="true"][data-panning="false"],
 .studio-viewport[data-pan-tool="true"][data-panning="false"] > .studio-canvas-content * {
   cursor: grab !important;

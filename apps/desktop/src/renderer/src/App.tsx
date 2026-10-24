@@ -23,7 +23,7 @@ import { TrainerWindow } from './pages/TrainerWindow'
 import { useApp } from './store'
 import { cloverUrl } from './lib/clover'
 import { MotionPanel } from './components/motion'
-import { AppTitlebar } from './components/AppTitlebar'
+import { AppTitlebar, TitlebarFrame } from './components/AppTitlebar'
 import type { WindowIntent } from './lib/windows'
 import {
   Bell,
@@ -130,7 +130,7 @@ function StudioShell(): React.JSX.Element {
 
   return (
     <div className="app-shell flex h-full flex-col text-[var(--color-text)]">
-      <header className="glass-thin drag relative flex h-11 shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] pl-[78px] pr-2">
+      <TitlebarFrame>
         <div className="no-drag flex items-center gap-2">
           <IconButton label="回到创作" className="size-7" onClick={() => navigate('/studio')}>
             <LayoutGrid className="size-4" />
@@ -153,7 +153,7 @@ function StudioShell(): React.JSX.Element {
             <Bell className="size-3.5" />
           </IconButton>
         </div>
-      </header>
+      </TitlebarFrame>
 
       <main className="content-surface min-h-0 min-w-0 flex-1 overflow-hidden" style={backgroundStyle}>
         <PageHost active={page.to} />
