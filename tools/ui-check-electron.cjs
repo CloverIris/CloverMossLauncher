@@ -53,6 +53,11 @@ app.whenReady().then(async () => {
   try {
     await win.loadFile(join(output, 'index.html'))
     win.webContents.setZoomFactor(scale)
+    if (process.env.CLOVER_UI_OOBE_ONLY === '1') {
+      await require('./ui-oobe-checks.cjs')({ evaluate, waitFor, capture, webContents: win.webContents, win, key })
+      app.exit(0)
+      return
+    }
     if (process.env.CLOVER_UI_SSH_ONLY === '1') {
       await require('./ui-ssh-checks.cjs')({ evaluate, waitFor, capture })
       app.exit(0)
@@ -147,6 +152,7 @@ app.whenReady().then(async () => {
     await checkMotion({ evaluate, waitFor, webContents: win.webContents, capture })
     await require('./ui-studio-checks.cjs')({ evaluate, waitFor })
     await require('./ui-ssh-checks.cjs')({ evaluate, waitFor, capture })
+    await require('./ui-oobe-checks.cjs')({ evaluate, waitFor, capture, webContents: win.webContents, win, key })
     console.log(`UI checks passed at ${scale * 100}%: typography, shared controls, modal focus/top layer, nested Escape, backdrop gesture, settings draft/save, motion preferences, surface radii`)
     app.exit(0)
   } catch (error) {

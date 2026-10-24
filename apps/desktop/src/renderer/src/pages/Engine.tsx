@@ -1,5 +1,6 @@
 import { Cpu, Download, HardDrive, RefreshCw, ShieldCheck, SlidersHorizontal, SquareTerminal, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Events, Ipc } from '@shared/channels'
 import type { EngineRemoteProgress, ManagedHost, MossInferDownloadState } from '@shared/types'
 import { call, onEvent } from '../lib/api'
@@ -16,6 +17,7 @@ interface LocalEngineInfo {
 }
 
 export function EnginePage(): React.JSX.Element {
+  const location = useLocation()
   const toast = useToast()
   const settings = useApp((state) => state.settings)
   const saveSettings = useApp((state) => state.saveSettings)
@@ -59,6 +61,10 @@ export function EnginePage(): React.JSX.Element {
   }, [toast])
 
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    const hostId = new URLSearchParams(location.search).get('hostId')
+    if (hostId && hostId !== 'local') document.getElementById(`engine-${hostId}`)?.scrollIntoView({ block: 'start' })
+  }, [location.key, location.search, hosts])
   useEffect(() => { setGithubToken(settings?.githubToken ?? '') }, [settings?.githubToken])
   useEffect(() => onEvent<MossInferDownloadState>(Events.mossInferDownload, setDownload), [])
   useEffect(() => onEvent<{ id: string }>(Events.hostsChanged, () => { void refresh() }), [refresh])
@@ -262,7 +268,7 @@ export function EnginePage(): React.JSX.Element {
         </div>
       </header>
 
-      <Card className="p-4">
+      <Card className="p-4" data-oobe-host="local">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="rounded-lg bg-accent-500/10 p-2 text-accent-300"><Cpu className="size-5" /></div>
@@ -312,7 +318,7 @@ export function EnginePage(): React.JSX.Element {
               <option value="bundled">bundled CUDA（+700MB，免系统库）</option>
             </select>
           </label>
-          <Button tone="primary" className="self-end" onClick={() => void install()} disabled={busy || Boolean(downloading)}>
+          <Button data-oobe="engine" data-oobe-hint="选择渠道和包类型后下载引擎。缺少系统 CUDA 库时，可在弹窗中选择 bundled 包。" tone="primary" className="self-end" onClick={() => void install()} disabled={busy || Boolean(downloading)}>
             <Download className="size-3.5" /> 下载/更新引擎
           </Button>
         </div>
@@ -419,7 +425,7 @@ export function EnginePage(): React.JSX.Element {
             const status = remote[host.id]
             const progress = remoteProgress[host.id]
             return (
-              <div key={host.id} className="rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-2.5">
+              <div key={host.id} id={`engine-${host.id}`} data-oobe-host={host.id} className="scroll-mt-4 rounded-lg border border-[var(--color-border-subtle)] bg-white/[0.02] p-2.5">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -449,7 +455,7 @@ export function EnginePage(): React.JSX.Element {
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                     <Button tone="ghost" onClick={() => void checkRemote(host.id)} disabled={busy}>检测</Button>
                     <Button tone="ghost" onClick={() => void openSshTerminal(host.id)}>SSH 终端</Button>
-                    {installingRemote === host.id ? <span className="px-1 text-[8.5px] text-amber-300">安装中…</span> : <Button tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>安装/更新</Button>}
+                    {installingRemote === host.id ? <span className="px-1 text-[8.5px] text-amber-300">安装中…</span> : <Button data-oobe="engine" data-oobe-hint="为清单选中的 SSH 主机安装引擎；已有引擎可先自动查找并检测。" tone="ghost" onClick={() => void installRemote(host.id)} disabled={busy || installingRemote !== null}>安装/更新</Button>}
                     <Button tone="ghost" onClick={() => void prepareModel(host.id)} disabled={busy || preparing !== null}>{preparing === host.id ? <Spinner className="size-3" /> : '准备模型'}</Button>
                   </div>
                 </div>
@@ -478,8 +484,8 @@ export function EnginePage(): React.JSX.Element {
         footer={
           <>
             <Button tone="ghost" onClick={() => setFallbackOpen(false)}>取消</Button>
-            <Button tone="primary" onClick={() => { setFallbackOpen(false); void runDownload('system-cuda', preflight?.preferredFlavour ?? 'cu13', true) }}>下载 system + 解压 CUDA 库</Button>
-            <Button tone="secondary" onClick={() => { setFallbackOpen(false); void runDownload('bundled') }}>下载 bundled（+700MB）</Button>
+            <Button data-oobe="engine" data-oobe-hint="选择一种方式补齐 CUDA 库：自动解压系统库，或下载包含 CUDA 的 bundled 包。" tone="primary" onClick={() => { setFallbackOpen(false); void runDownload('system-cuda', preflight?.preferredFlavour ?? 'cu13', true) }}>下载 system + 解压 CUDA 库</Button>
+            <Button data-oobe="engine" tone="secondary" onClick={() => { setFallbackOpen(false); void runDownload('bundled') }}>下载 bundled（+700MB）</Button>
           </>
         }
       >

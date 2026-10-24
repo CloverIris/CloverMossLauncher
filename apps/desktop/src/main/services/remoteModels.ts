@@ -25,7 +25,8 @@ async function prepareRemoteRepo(
   const meta = (await response.json()) as HfRevision
   const sha = String(meta.sha ?? '')
   const all = (meta.siblings ?? []).map((item) => String(item.rfilename ?? '')).filter(safeRelative)
-  const files = onlyFiles?.length ? all.filter((file) => onlyFiles.some((suffix) => file === suffix || file.endsWith(`/${suffix}`) || file.endsWith(suffix))) : all
+  const files = onlyFiles?.length ? all.filter((file) => onlyFiles.some((suffix) => suffix.endsWith('/*')
+    ? file.startsWith(suffix.slice(0, -1)) : file === suffix || file.endsWith(`/${suffix}`) || file.endsWith(suffix))) : all
   if (!/^[a-f0-9]{40,64}$/.test(sha) || !files.length) throw new Error('HF 没有返回有效 revision/files')
 
   const modelsRoot = await remoteAbsolute(host, host.modelsRoot || '~/.mossstudio/models')
@@ -86,22 +87,40 @@ function modelMatches(entry: ModelEntry, files: string[]): string | undefined {
   const repoToken = `models--${entry.repo.replace('/', '--')}`
   const expected = entry.files?.filter(Boolean) ?? []
   const candidates = files.filter((file) => file.includes(repoToken))
-  if (expected.length) {
-    for (const file of candidates) {
-      if (!expected.some((suffix) => file.endsWith(suffix) || file.split('/').at(-1) === suffix.split('/').at(-1))) continue
-      const snapshot = file.match(/^(.*?\/snapshots\/[^/]+)/)
-      return snapshot?.[1] ?? file.slice(0, file.lastIndexOf('/'))
+  const snapshots = [...new Set(candidates.map((file) => file.match(/^(.*?\/snapshots\/[^/]+)/)?.[1]).filter((path): path is string => Boolean(path)))]
+  for (const snapshot of snapshots) {
+    const relative = candidates.filter((file) => file.startsWith(`${snapshot}/`)).map((file) => file.slice(snapshot.length + 1))
+    // Match every component glob within one revision, rather than treating a
+    // single file (or files from different snapshots) as an installed model.
+    if (!expected.every((pattern) => pattern.endsWith('/*')
+      ? relative.some((file) => file.startsWith(pattern.slice(0, -1)))
+      : relative.includes(pattern))) continue
+    if (entry.format !== 'comfyui' && ['dit', 'text_encoder', 'vae'].includes(entry.role)) {
+      const prefix = entry.subfolder ? `${entry.subfolder}/` : ''
+      const weights = relative.filter((file) => file.startsWith(prefix) && file.endsWith('.safetensors'))
+      if (!relative.includes(`${prefix}config.json`) || !weights.length) continue
+      const complete = weights.every((file) => {
+        const shard = file.match(/^(.*-)(\d+)-of-(\d+)\.safetensors$/)
+        if (!shard) return true
+        const count = Number(shard[3])
+        return count > 0 && count <= weights.length && Array.from({ length: count }, (_, index) =>
+          `${shard[1]}${String(index + 1).padStart(shard[2]!.length, '0')}-of-${shard[3]}.safetensors`,
+        ).every((name) => relative.includes(name))
+      })
+      if (!complete) continue
+      if (entry.role === 'text_encoder' && (!relative.includes('tokenizer/tokenizer_config.json')
+        || !(relative.includes('tokenizer/tokenizer.json') || relative.includes('tokenizer/vocab.json') && relative.includes('tokenizer/merges.txt')))) continue
     }
-    return undefined
+    if (entry.role === 'support' && !relative.includes('scheduler/scheduler_config.json')) continue
+    if (entry.role === 'full' && !relative.includes('model_index.json')) continue
+    return snapshot
   }
-  const index = candidates.find((file) => file.endsWith('/model_index.json'))
-  if (index) return index.replace(/\/model_index\.json$/, '')
-  return candidates[0]
+  return undefined
 }
 
 export async function scanRemoteModels(host: TrainingHost, catalog: Catalog, modelsRoot?: string): Promise<RemoteModelInventory> {
   const root = await remoteAbsolute(host, modelsRoot || host.modelsRoot || '~/.mossstudio/models')
-  const command = `test -d ${posixQuote(root)} && find ${posixQuote(root)} -maxdepth 8 -type f \\( -name '*.safetensors' -o -name '*.json' \\) -printf '%p\\n' 2>/dev/null | head -n 20000 || true`
+  const command = `test -d ${posixQuote(root)} && find ${posixQuote(root)} -maxdepth 8 -type f -size +0c \\( -name '*.safetensors' -o -name '*.json' -o -name '*.py' -o -name '*.txt' \\) -printf '%p\\n' 2>/dev/null | head -n 20000 || true`
   const result = await sshExec(host, command, 120_000)
   const files = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const models = catalog.models.map((entry) => {

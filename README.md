@@ -68,6 +68,8 @@ pnpm dev
 
 开发数据写入仓库根目录的 `.dev-data/`。
 
+首次启动可开启配置引导。点击清单中的「前往配置」后，清单会停靠到右下角并跟随实际准备状态更新；也可以跳过，之后从标题栏的清单按钮重新开启。
+
 启动后：
 
 1. 打开底部「引擎」页。
@@ -82,6 +84,8 @@ pnpm dev
 pnpm typecheck
 pnpm build
 pnpm test:ui
+node --test tools/test-onboarding.mjs
+node --test tools/test-managed-python.mjs
 env -u ELECTRON_RUN_AS_NODE pnpm --filter @clover/desktop exec electron . --smoke
 ```
 

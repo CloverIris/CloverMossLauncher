@@ -1,65 +1,65 @@
 import { join } from 'node:path'
 import type { OnboardingStatus, OnboardingStep, Settings } from '@shared/types'
 import { paths } from '../lib/paths'
-import { listInstances } from './instances'
-import { readRuntime } from './runtimes'
+import { listDevices } from './devices'
 import { getCatalog } from './models'
 import { legacyModelReady } from './modelReadiness'
 import { resolveServerPath } from './mossInfer'
+import { getTrainingHost } from './trainingHosts'
+import { remoteEngineStatus } from './remoteEngine'
+import { scanRemoteModels } from './remoteModels'
 
-export async function getOnboardingStatus(settings: Settings): Promise<OnboardingStatus> {
-  const instances = await listInstances()
-  const useMossInfer = settings.inferenceBackend === 'mossinfer'
-  let runtimeReady = false
-  if (useMossInfer) {
-    runtimeReady = resolveServerPath(settings) !== null
+export async function getOnboardingStatus(settings: Settings, hostId = 'local'): Promise<OnboardingStatus> {
+  const catalog = await getCatalog(settings)
+  let installed = new Set(catalog.models.filter((model) => model.installed).map((model) => model.id))
+  let deviceReady: boolean
+  let deviceDetail: string
+  let engineReady: boolean
+  let engineDetail: string
+  let fullModelReady = false
+
+  if (hostId === 'local') {
+    const gpu = listDevices(settings).find((device) => device.kind === 'cuda' && device.available)
+    deviceReady = Boolean(gpu)
+    deviceDetail = gpu?.name ?? (process.platform === 'darwin'
+      ? 'macOS 请在设备页添加 Linux NVIDIA SSH 主机，并在此切换准备位置'
+      : '需要可用的 NVIDIA GPU；也可以添加 Linux NVIDIA SSH 主机')
+    engineReady = resolveServerPath(settings) !== null
+    engineDetail = engineReady ? 'MossInfer 已安装' : '下载 MossInfer；缺少系统 CUDA 库时可选择 bundled 包'
+    fullModelReady = catalog.models.some((model) => model.role === 'full' && model.installed && model.format !== 'comfyui')
+      || await legacyModelReady(join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'))
   } else {
-    for (const instance of instances) {
-      const runtime = await readRuntime(instance.runtimeId)
-      if (runtime?.state === 'ready') {
-        runtimeReady = true
-        break
-      }
-    }
+    const host = getTrainingHost(settings, hostId)
+    if (!host || host.kind !== 'ssh') throw new Error('SSH 主机已移除，请重新选择准备位置')
+    const engine = await remoteEngineStatus(host)
+    deviceReady = engine.online && Boolean(engine.gpu)
+    deviceDetail = engine.online ? engine.gpu || '远端未检测到 NVIDIA GPU' : 'SSH 未连接，请在设备页检查连接'
+    engineReady = engine.online && engine.available
+    engineDetail = engineReady ? `${host.name} · MossInfer 已安装` : '在引擎页为这台 SSH 主机安装 MossInfer'
+    const inventory = engine.online ? await scanRemoteModels(host, catalog) : null
+    // A local download must never complete a remote host's checklist.
+    installed = new Set(inventory?.models.filter((model) => model.installed).map((model) => model.id) ?? [])
   }
-  const catalog = await getCatalog(settings as Settings)
-  const modelReady = catalog.bundles.some((bundle) => [...Object.values(bundle.components), bundle.support].every((id) => catalog.models.find((model) => model.id === id)?.installed)) || await legacyModelReady(join(paths.hub(settings.modelsRoot), 'models--OpenMOSS-Team--MOSS-Image-SFT'))
 
+  const ids = (bundle: typeof catalog.bundles[number]): string[] => [...Object.values(bundle.components), bundle.support]
+  const score = (bundle: typeof catalog.bundles[number]): number => ids(bundle).reduce((total, id) =>
+    total + (installed.has(id) ? 2 : hostId === 'local' && catalog.models.find((model) => model.id === id)?.installState === 'partial' ? 1 : 0), 0,
+  )
+  const bundle = [...catalog.bundles].sort((a, b) => score(b) - score(a) || Number(Boolean(b.recommended)) - Number(Boolean(a.recommended)))[0]
+  const modelIds = bundle ? ids(bundle) : []
+  const modelCount = fullModelReady ? modelIds.length : modelIds.filter((id) => installed.has(id)).length
+  const modelReady = fullModelReady || modelIds.length > 0 && modelCount === modelIds.length
+  const partialModel = modelCount > 0 || hostId === 'local' && modelIds.some((id) => catalog.models.find((model) => model.id === id)?.installState === 'partial')
   const steps: OnboardingStep[] = [
+    { id: 'device', status: deviceReady ? 'ok' : 'missing', title: '推理设备', detail: deviceDetail, action: 'devices' },
+    { id: 'engine', status: engineReady ? 'ok' : 'missing', title: 'MossInfer 引擎', detail: engineDetail, action: 'engines' },
     {
-      id: 'instance',
-      status: instances.length ? 'ok' : 'missing',
-      title: '实例',
-      detail: instances.length ? `已有 ${instances.length} 个版本实例` : '还没有安装 MOSS-Image 实例',
-      action: 'instances',
-    },
-    {
-      id: 'runtime',
-      status: runtimeReady ? 'ok' : useMossInfer ? 'missing' : instances.length ? 'partial' : 'missing',
-      title: '运行时',
-      detail: useMossInfer
-        ? runtimeReady
-          ? 'MossInfer 引擎已就绪'
-          : '未找到 moss-server 可执行文件，请在设置中配置'
-        : runtimeReady
-          ? 'Python 依赖已就绪'
-          : instances.length
-            ? '实例已有，但依赖还没装完'
-            : '等待实例创建',
-      action: useMossInfer && !runtimeReady ? 'settings' : 'instances',
-    },
-    {
-      id: 'model',
-      status: modelReady ? 'ok' : 'missing',
-      title: '模型',
-      detail: modelReady ? '模型组件已就绪' : '在模型库补齐一套模型组件后即可使用',
-      action: 'models',
+      id: 'model', title: '模型', action: 'models', modelIds,
+      status: modelReady ? 'ok' : partialModel ? 'partial' : 'missing',
+      detail: modelReady ? `${bundle?.name ?? '完整模型'} 已就绪`
+        : `${bundle?.name ?? 'MOSS-Image'} · ${modelCount}/${modelIds.length || 4} 个组件已就绪，需准备主模型、文本编码器、VAE 与配置`,
+      sizeBytes: catalog.models.filter((model) => modelIds.includes(model.id) && !installed.has(model.id)).reduce((total, model) => total + model.sizeBytes, 0),
     },
   ]
-
-  return {
-    ready: steps.every((step) => step.status === 'ok'),
-    steps,
-    checkedAt: new Date().toISOString(),
-  }
+  return { hostId, bundleId: bundle?.id, bundleName: bundle?.name, ready: steps.every((step) => step.status === 'ok'), steps, checkedAt: new Date().toISOString() }
 }

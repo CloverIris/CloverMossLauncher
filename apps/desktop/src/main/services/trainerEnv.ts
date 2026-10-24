@@ -4,6 +4,7 @@ import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { firstLine, run } from '../lib/run'
+import { pythonVersion } from '../lib/python'
 
 export function venvPython(dir: string): string {
   return process.platform === 'win32' ? join(dir, 'Scripts', 'python.exe') : join(dir, 'bin', 'python3')
@@ -12,11 +13,6 @@ export function venvPython(dir: string): string {
 async function which(name: string): Promise<string | null> {
   const result = await run(process.platform === 'win32' ? 'where' : 'which', [name], { timeoutMs: 3000 })
   return result.code === 0 ? firstLine(result.stdout) || null : null
-}
-
-async function pythonVersion(path: string): Promise<string | null> {
-  const result = await run(path, ['--version'], { timeoutMs: 5000 })
-  return `${result.stdout}${result.stderr}`.match(/Python\s+(\d+\.\d+\.\d+)/)?.[1] ?? null
 }
 
 /** Python discovery is scoped to Trainer, not inference. */

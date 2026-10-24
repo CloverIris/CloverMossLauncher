@@ -59,6 +59,16 @@ export interface PythonInfo {
   source: 'system' | 'uv' | 'pyenv' | 'conda' | 'managed'
 }
 
+export interface PythonInstallState {
+  phase: 'querying' | 'downloading' | 'verifying' | 'extracting' | 'done' | 'error'
+  bytes: number
+  totalBytes: number
+  percent: number
+  version?: string
+  path?: string
+  error?: string
+}
+
 export interface ToolState {
   found: boolean
   version?: string
@@ -131,6 +141,8 @@ export interface Settings {
   dismissedAnnouncements: string[]
   dismissedUpdateVersion: string | null
   sidebarCollapsed: boolean
+  onboardingState: 'pending' | 'active' | 'dismissed' | 'completed'
+  onboardingHostId: string
   galleryRoots: string[]
   homeBackground: string | null
   trainerRoot: string | null
@@ -490,14 +502,19 @@ export interface LaunchCase {
 }
 
 export interface OnboardingStep {
-  id: 'instance' | 'runtime' | 'model'
+  id: 'device' | 'engine' | 'model'
   status: 'ok' | 'missing' | 'partial'
   title: string
   detail: string
-  action: 'instances' | 'models' | 'settings'
+  action: 'devices' | 'engines' | 'models'
+  modelIds?: string[]
+  sizeBytes?: number
 }
 
 export interface OnboardingStatus {
+  hostId: string
+  bundleId?: string
+  bundleName?: string
   ready: boolean
   steps: OnboardingStep[]
   checkedAt: string

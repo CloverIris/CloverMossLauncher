@@ -345,6 +345,7 @@ export const useApp = create<AppStore>((set, get) => {
           })
           if (
             updates.value.latestVersion &&
+            settings.onboardingState !== 'pending' &&
             settings.dismissedUpdateVersion !== updates.value.latestVersion
           ) {
             set({ updateDialogOpen: true })

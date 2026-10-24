@@ -24,6 +24,9 @@ module.exports = async function checkMaterials({ evaluate, webContents }) {
       // Hidden windows can return a stale composited frame on their first capture.
       await webContents.capturePage()
       await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      // The native compositor can still hold the previous backdrop frame after
+      // RAF; allow the updated material to commit before sampling its pixels.
+      await new Promise((resolve) => setTimeout(resolve, 220))
       const rect = await evaluate(`(() => {
         const box = document.querySelector('#material-probe > div').getBoundingClientRect()
         return { x: box.x + box.width / 2 - 32, y: box.y + box.height / 2 - 8, width: 64, height: 16 }

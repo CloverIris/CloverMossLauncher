@@ -9,6 +9,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './components/ui'
 import { NotificationPanel } from './components/NotificationPanel'
 import { UpdateDialog } from './components/UpdateDialog'
+import { Oobe } from './components/Oobe'
 import { GalleryPage } from './pages/Gallery'
 import { DiagnosticsPage } from './pages/Diagnostics'
 import { DevicesPage } from './pages/Devices'
@@ -140,6 +141,7 @@ function StudioShell(): React.JSX.Element {
           </span>
         </div>
         <div className="no-drag flex items-center gap-0.5">
+          <Oobe />
           <IconButton label={terminalOpen ? '关闭终端' : '打开终端'} className="size-7" onClick={() => setTerminalOpen((open) => !open)}>
             <SquareTerminal className="size-3.5" />
           </IconButton>

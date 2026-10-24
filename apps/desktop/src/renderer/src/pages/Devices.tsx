@@ -272,7 +272,7 @@ export function DevicesPage(): React.JSX.Element {
               刷新
             </span>
           </Button>
-          <Button tone="primary" onClick={openAdd}>
+          <Button data-oobe="device" data-oobe-hint="添加一台 Linux NVIDIA SSH 主机，保存后测试连接；再在准备清单中切换到这台主机。" tone="primary" onClick={openAdd}>
             <span className="inline-flex items-center gap-1.5">
               <Plus className="size-3.5" /> 添加 SSH 设备
             </span>
@@ -294,6 +294,7 @@ export function DevicesPage(): React.JSX.Element {
               const active = activeJobsFor(host.id, jobs)
               return (
                 <button
+                  data-oobe="device" data-oobe-host={host.id}
                   key={host.id}
                   type="button"
                   onClick={() => setSelectedId(host.id)}
@@ -358,6 +359,7 @@ export function DevicesPage(): React.JSX.Element {
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <Button
+                    data-oobe="device" data-oobe-host={selected.id}
                     tone="secondary"
                     onClick={() => void testHost(selected)}
                     disabled={testing === selected.id}
