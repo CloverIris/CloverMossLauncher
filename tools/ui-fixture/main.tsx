@@ -15,6 +15,7 @@ import { DevicesPage } from '../../apps/desktop/src/renderer/src/pages/Devices'
 import { Oobe } from '../../apps/desktop/src/renderer/src/components/Oobe'
 import { ModelsPage } from '../../apps/desktop/src/renderer/src/pages/Models'
 import { EnginePage } from '../../apps/desktop/src/renderer/src/pages/Engine'
+import { App } from '../../apps/desktop/src/renderer/src/App'
 
 let fixtureHosts: ManagedHost[] = []
 let failOobeSave = false
@@ -247,4 +248,10 @@ function OobeProbe(): React.JSX.Element {
   </div>
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><MemoryRouter><Fixture /></MemoryRouter></StrictMode>)
+const dpiAudit = new URLSearchParams(location.search).has('dpi')
+if (dpiAudit) {
+  window.clover.windowKind = 'studio'
+  document.documentElement.dataset.uiAnimation = 'off'
+  useApp.setState({ studioPrompt: '描述画面、文字、风格与布局。', catalog: fixtureOobeCatalog as never, devices: fixtureDevices as never })
+}
+createRoot(document.getElementById('root')!).render(<StrictMode>{dpiAudit ? <App /> : <MemoryRouter><Fixture /></MemoryRouter>}</StrictMode>)

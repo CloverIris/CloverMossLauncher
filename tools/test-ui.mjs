@@ -12,6 +12,7 @@ const { default: tailwindcss } = await import(pathToFileURL(require.resolve('@ta
 const root = fileURLToPath(new URL('../', import.meta.url))
 const output = mkdtempSync(join(tmpdir(), 'clover-ui-'))
 const screenshots = process.argv.find((arg) => arg.startsWith('--screenshots='))?.slice('--screenshots='.length)
+const dpiAudit = process.argv.includes('--dpi')
 
 try {
   await build({
@@ -32,11 +33,12 @@ try {
   })
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
-  for (const scale of process.argv.includes('--scaled') ? [1, 1.5, 2] : [1]) {
-    const result = spawnSync(require('electron'), [resolve(root, 'tools/ui-check-electron.cjs'), output], {
+  for (const scale of dpiAudit ? ['native', 1, 1.25, 1.5, 1.75, 2] : process.argv.includes('--scaled') ? [1, 1.5, 2] : [1]) {
+    const result = spawnSync(require('electron'), [resolve(root, dpiAudit ? 'tools/ui-dpi-check-electron.cjs' : 'tools/ui-check-electron.cjs'), output], {
       env: {
         ...env,
         CLOVER_UI_SCALE: String(scale),
+        ...(dpiAudit ? { CLOVER_UI_SCREENSHOTS: resolve(screenshots ?? 'docs/assets/ui-dpi-review') } : {}),
         CLOVER_UI_STUDIO_ONLY: process.argv.includes('--studio') ? '1' : '0',
         CLOVER_UI_SSH_ONLY: process.argv.includes('--ssh') ? '1' : '0',
         CLOVER_UI_OOBE_ONLY: process.argv.includes('--oobe') ? '1' : '0',
@@ -51,6 +53,10 @@ try {
       process.exitCode = result.status ?? 1
       break
     }
+  }
+  if (dpiAudit && !process.exitCode) {
+    const { writeDpiReport } = await import('./ui-dpi-report.mjs')
+    writeDpiReport(resolve(screenshots ?? 'docs/assets/ui-dpi-review'))
   }
 } finally {
   rmSync(output, { recursive: true, force: true })

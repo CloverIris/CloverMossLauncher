@@ -38,7 +38,16 @@ UI：
 
 ```powershell
 pnpm test:ui
+# 设备 DPI 审查：网页缩放保持 100%，分别启动设备缩放 100%/125%/150%/175%/200% 的独立进程
+node tools/test-ui.mjs --dpi
 ```
+
+DPI 审查使用实际 App 外壳、创作页和设置页，配合内存 IPC 与临时用户目录，不读写 `.dev-data/`。
+报告及原始截图保存在 `docs/assets/ui-dpi-review/index.html`，并记录实际 DPR、网页 zoom、窗口/工作区 DIP、
+截图物理像素、计算字号、画布区和滚动容器。覆盖生产默认窗口、本机工作区和 1080p 工作区三个场景；
+窗口最小尺寸保持生产设置，边框及分数 DPI 的舍入允许 2 DIP 误差。
+`--dpi` 通过 Electron 设备缩放开关模拟，不更改 Windows 显示设置；不替代真实跨屏拖动验收。
+原有 `--scaled` 使用 `webContents.setZoomFactor`，属于网页缩放回归，应与设备 DPI 结果分别记录。
 
 材质回归同时检查构建后的 `backdrop-filter` 和动画中间帧的实际像素。
 覆盖页面淡入、浮层淡入/淡出与反向重开、关闭动效时的清理，以及 100%/150%/200% renderer 缩放。
