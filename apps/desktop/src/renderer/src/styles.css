@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@openai/apps-sdk-ui/css";
+@import "./styles/dropdowns.css";
 @source "../../../node_modules/@openai/apps-sdk-ui";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -405,11 +406,6 @@ body {
     text-overflow: ellipsis;
   }
 
-  .app-select option {
-    background: var(--color-surface);
-    color: var(--color-text);
-  }
-
   .app-textarea {
     height: auto;
     min-height: 80px;
@@ -573,7 +569,6 @@ main::-webkit-scrollbar {
   outline: none;
 }
 .model-select:focus-visible { border-color: var(--accent); outline: 2px solid color-mix(in oklab, var(--accent) 35%, transparent); outline-offset: 2px; }
-.model-select option { background: #202329; color: #e9eef7; }
 
 /* Preserve the shared wallpaper; tint only the model cards for readability. */
 .model-management .grid > .glass {

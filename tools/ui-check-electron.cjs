@@ -101,7 +101,7 @@ app.whenReady().then(async () => {
     await capture('modal')
     assert.equal(await evaluate('document.querySelector("dialog select").labels[0].textContent'), 'Shared select')
     assert.equal(await evaluate('getComputedStyle(document.querySelector("dialog select")).fontSize'), '11px')
-    assert.equal(await evaluate('getComputedStyle(document.querySelector("dialog select")).appearance'), 'auto')
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("dialog select")).appearance'), 'base-select')
     assert.equal(await evaluate('getComputedStyle(document.querySelector("dialog select")).height'), '30px')
     assert.equal(await evaluate('document.querySelector("dialog option[value=disabled]").disabled'), true)
     await evaluate('document.querySelector("dialog select").value = "b"; document.querySelector("dialog select").dispatchEvent(new Event("change", { bubbles: true }))')
