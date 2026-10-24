@@ -8,9 +8,10 @@ import { resolveServerPath } from './mossInfer'
 import { getTrainingHost } from './trainingHosts'
 import { remoteEngineStatus } from './remoteEngine'
 import { scanRemoteModels } from './remoteModels'
+import { pickPython } from './trainerEnv'
 
 export async function getOnboardingStatus(settings: Settings, hostId = 'local'): Promise<OnboardingStatus> {
-  const catalog = await getCatalog(settings)
+  const [catalog, python] = await Promise.all([getCatalog(settings), pickPython(settings).catch(() => null)])
   let installed = new Set(catalog.models.filter((model) => model.installed).map((model) => model.id))
   let deviceReady: boolean
   let deviceDetail: string
@@ -51,6 +52,7 @@ export async function getOnboardingStatus(settings: Settings, hostId = 'local'):
   const modelReady = fullModelReady || modelIds.length > 0 && modelCount === modelIds.length
   const partialModel = modelCount > 0 || hostId === 'local' && modelIds.some((id) => catalog.models.find((model) => model.id === id)?.installState === 'partial')
   const steps: OnboardingStep[] = [
+    { id: 'python', status: python ? 'ok' : 'missing', title: 'Python', detail: python ? `本机 Python ${python.version} · ${python.path}` : '本机未找到 Python 3.10+，可安装内置 Python，无需管理员权限', action: 'install-python' },
     { id: 'device', status: deviceReady ? 'ok' : 'missing', title: '推理设备', detail: deviceDetail, action: 'devices' },
     { id: 'engine', status: engineReady ? 'ok' : 'missing', title: 'MossInfer 引擎', detail: engineDetail, action: 'engines' },
     {

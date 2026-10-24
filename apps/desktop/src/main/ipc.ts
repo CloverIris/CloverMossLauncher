@@ -6,6 +6,7 @@ import type { IpcResult } from '@shared/types'
 import { emit } from './lib/events'
 import { ensureDirs, paths } from './lib/paths'
 import { scanEnvironment } from './services/env'
+import { getPythonInstallState, installManagedPython } from './services/managedPython'
 import { cancelDownload, getCatalog, deleteModel, importModelFolder, listDownloads, pauseDownload, startDownload, installBundle } from './services/models'
 import { galleryDetail, listGallery, revealInFolder } from './services/gallery'
 import { cancelJob, getJob, getJobLogs, inputJob, listJobs } from './services/supervisor'
@@ -239,6 +240,8 @@ export function registerIpc(): void {
   })
 
   handle(Ipc.onboardingStatus, schemas.onboardingStatus, (input) => getOnboardingStatus(getSettings(), input?.hostId))
+  handle(Ipc.pythonInstall, null, () => installManagedPython())
+  handle(Ipc.pythonInstallState, null, () => getPythonInstallState())
 
   handle(Ipc.trainerMirror, null, () => trainerMirrorInfo(getSettings()))
 

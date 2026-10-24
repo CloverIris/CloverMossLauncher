@@ -26,6 +26,8 @@ export const Ipc = {
   projectSave: 'projects:save',
   projectDelete: 'projects:delete',
   onboardingStatus: 'onboarding:status',
+  pythonInstall: 'python:install',
+  pythonInstallState: 'python:install-state',
   trainerMirror: 'trainer:mirror',
   trainerBranches: 'trainer:branches',
   trainerCommits: 'trainer:commits',
@@ -132,6 +134,7 @@ export type IpcChannel = (typeof Ipc)[keyof typeof Ipc]
 
 export const Events = {
   envProgress: 'event:env-progress',
+  pythonInstall: 'event:python-install',
   gitProgress: 'event:git-progress',
   runtimeLog: 'event:runtime-log',
   download: 'event:download',

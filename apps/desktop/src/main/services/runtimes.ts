@@ -7,6 +7,7 @@ import { Events } from '@shared/channels'
 import { emit } from '../lib/events'
 import { paths } from '../lib/paths'
 import { firstLine, run, runStream, tail } from '../lib/run'
+import { pythonVersion } from '../lib/python'
 import { getLastNetwork } from './network'
 
 export const MOSS_DEPS = [
@@ -71,12 +72,6 @@ export async function listRuntimes(): Promise<RuntimeInfo[]> {
 async function which(name: string): Promise<string | null> {
   const result = await run(process.platform === 'win32' ? 'where' : 'which', [name], { timeoutMs: 3000 })
   return result.code === 0 ? firstLine(result.stdout) || null : null
-}
-
-async function pythonVersion(path: string): Promise<string | null> {
-  const result = await run(path, ['--version'], { timeoutMs: 5000 })
-  const match = `${result.stdout}${result.stderr}`.match(/Python\s+(\d+\.\d+\.\d+)/)
-  return match?.[1] ?? null
 }
 
 export async function pickPython(settings: Settings): Promise<{ path: string; version: string }> {

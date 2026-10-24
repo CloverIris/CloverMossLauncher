@@ -59,6 +59,16 @@ export interface PythonInfo {
   source: 'system' | 'uv' | 'pyenv' | 'conda' | 'managed'
 }
 
+export interface PythonInstallState {
+  phase: 'querying' | 'downloading' | 'verifying' | 'extracting' | 'done' | 'error'
+  bytes: number
+  totalBytes: number
+  percent: number
+  version?: string
+  path?: string
+  error?: string
+}
+
 export interface ToolState {
   found: boolean
   version?: string
@@ -492,11 +502,11 @@ export interface LaunchCase {
 }
 
 export interface OnboardingStep {
-  id: 'device' | 'engine' | 'model'
+  id: 'python' | 'device' | 'engine' | 'model'
   status: 'ok' | 'missing' | 'partial'
   title: string
   detail: string
-  action: 'devices' | 'engines' | 'models'
+  action: 'install-python' | 'devices' | 'engines' | 'models'
   modelIds?: string[]
   sizeBytes?: number
 }

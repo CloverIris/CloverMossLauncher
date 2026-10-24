@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowRight, Boxes, Check, ChevronDown, ChevronRight, Download, ListChecks, Maximize2, RefreshCw, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Events, Ipc } from '@shared/channels'
-import type { EngineRemoteProgress, ManagedHost, MossInferDownloadState, OnboardingStatus, OnboardingStep, Settings } from '@shared/types'
+import type { EngineRemoteProgress, ManagedHost, MossInferDownloadState, OnboardingStatus, OnboardingStep, PythonInstallState, Settings } from '@shared/types'
 import { call, onEvent } from '../lib/api'
 import { bytes } from '../lib/format'
 import { useApp } from '../store'
@@ -32,6 +32,7 @@ export function Oobe(): React.JSX.Element {
   const [hosts, setHosts] = useState<ManagedHost[]>([])
   const [engineDownload, setEngineDownload] = useState<MossInferDownloadState | null>(null)
   const [remoteProgress, setRemoteProgress] = useState<EngineRemoteProgress | null>(null)
+  const [pythonInstall, setPythonInstall] = useState<PythonInstallState | null>(null)
   const [revision, setRevision] = useState(0)
   const initialized = useRef(false)
   const dialog = useRef<HTMLDialogElement>(null)
@@ -43,7 +44,7 @@ export function Oobe(): React.JSX.Element {
   const docked = screen === 'checklist'
   const current = status?.hostId === hostId ? status : null
   const completed = current?.steps.filter((step) => step.status === 'ok').length ?? 0
-  const total = current?.steps.length ?? 3
+  const total = current?.steps.length ?? 4
   const refresh = (): void => setRevision((value) => value + 1)
 
   useEffect(() => {
@@ -78,7 +79,19 @@ export function Oobe(): React.JSX.Element {
       }).finally(() => { if (!canceled) setChecking(false) })
     }, 120)
     return () => { canceled = true; window.clearTimeout(timer) }
-  }, [visible, hostId, location.pathname, catalog, settings?.modelsRoot, settings?.mossInferServerPath, revision])
+  }, [visible, hostId, location.pathname, catalog, settings?.modelsRoot, settings?.mossInferServerPath, settings?.pythonPath, revision])
+
+  useEffect(() => {
+    if (!visible) return
+    let changed = false
+    const off = onEvent<PythonInstallState>(Events.pythonInstall, (next) => {
+      changed = true
+      setPythonInstall(next)
+      if (next.phase === 'done' || next.phase === 'error') refresh()
+    })
+    void call<PythonInstallState | null>(Ipc.pythonInstallState).then((next) => { if (!changed) setPythonInstall(next) }).catch(() => undefined)
+    return () => { changed = true; off() }
+  }, [visible])
 
   useEffect(() => {
     if (!visible) return
@@ -153,6 +166,14 @@ export function Oobe(): React.JSX.Element {
     setScreen('checklist')
     setCollapsed(false)
     if (!step) return
+    if (step.action === 'install-python') {
+      setSpotlightDismissed(true)
+      setPythonInstall({ phase: 'querying', bytes: 0, totalBytes: 0, percent: 0 })
+      void call<PythonInstallState>(Ipc.pythonInstall).then(setPythonInstall).catch((reason: unknown) => {
+        setPythonInstall({ phase: 'error', bytes: 0, totalBytes: 0, percent: 0, error: reason instanceof Error ? reason.message : String(reason) })
+      }).finally(refresh)
+      return
+    }
     setSpotlightDismissed(false)
     const query = new URLSearchParams({ hostId })
     if (step.action === 'models') {
@@ -216,7 +237,7 @@ export function Oobe(): React.JSX.Element {
             {screen === 'welcome' ? (
               <>
                 <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-                  <p className="text-[12px] leading-6 text-[var(--color-text-secondary)]">从推理设备、MossInfer 引擎到模型权重，一步步准备好生成图片所需的内容。</p>
+                  <p className="text-[12px] leading-6 text-[var(--color-text-secondary)]">从 Python、推理设备、MossInfer 引擎到模型权重，一步步准备好所需内容。未找到 Python 时，可一键安装内置版本。</p>
                   <div className="grid grid-cols-3 gap-2">
                     {[{ icon: Boxes, label: '配置引擎' }, { icon: Download, label: '准备模型' }, { icon: ListChecks, label: '跟随清单' }].map(({ icon: Icon, label }) =>
                       <div key={label} className="rounded-[6px] border border-[var(--color-border-subtle)] bg-white/[0.025] px-3 py-3"><Icon className="mb-2 size-4 text-accent-300" /><span className="text-[11px] text-[var(--color-text-secondary)]">{label}</span></div>,
@@ -254,8 +275,9 @@ export function Oobe(): React.JSX.Element {
                         const taskTotal = tasks.reduce((sum, task) => sum + task.totalBytes, 0)
                         const engine = step.id === 'engine' && hostId === 'local' ? engineDownload : null
                         const remote = step.id === 'engine' && remoteProgress?.hostId === hostId ? remoteProgress : null
-                        const running = !done && (tasks.some((task) => ['queued', 'running', 'verifying'].includes(task.state)) || engine && !['done', 'error'].includes(engine.phase) || remote && !['done', 'error'].includes(remote.phase))
-                        const failed = !done && (tasks.some((task) => task.state === 'error') || engine?.phase === 'error' || remote?.phase === 'error')
+                        const python = step.id === 'python' ? pythonInstall : null
+                        const running = !done && (tasks.some((task) => ['queued', 'running', 'verifying'].includes(task.state)) || engine && !['done', 'error'].includes(engine.phase) || remote && !['done', 'error'].includes(remote.phase) || python && !['done', 'error'].includes(python.phase))
+                        const failed = !done && (tasks.some((task) => task.state === 'error') || engine?.phase === 'error' || remote?.phase === 'error' || python?.phase === 'error')
                         const label = done ? '已就绪' : failed ? '下载失败，可重试' : running ? queued ? '排队中' : '准备中' : tasks.some((task) => task.state === 'paused') ? '已暂停' : step.status === 'partial' ? '待补齐' : '待准备'
                         return <li key={step.id} data-oobe-step={step.id} data-status={done ? 'ok' : failed ? 'error' : running ? 'running' : step.status} className="flex items-start gap-2.5 py-3">
                           <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[9px] tabular-nums', done ? 'border-accent-500/25 bg-accent-500/10 text-accent-300' : 'border-[var(--color-border)] text-[var(--color-text-tertiary)]')}>
@@ -264,9 +286,13 @@ export function Oobe(): React.JSX.Element {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"><span className="text-[11px] font-medium">{step.title}</span><span className={cn('text-[9px]', failed ? 'text-red-300' : done ? 'text-accent-300' : 'text-[var(--color-text-tertiary)]')}>{label}</span></div>
                             <p className="mt-1 break-words text-[10px] leading-4 text-[var(--color-text-tertiary)]">{step.detail}</p>
+                            {!done && python ? <div className="mt-1 space-y-1" aria-live="polite">
+                              <p className={cn('break-words text-[9px] leading-4', failed ? 'text-red-300' : 'text-[var(--color-text-tertiary)]')}>{python.phase === 'error' ? python.error : python.phase === 'querying' ? '正在查找适用的 Python 安装包…' : python.phase === 'downloading' ? `下载 Python ${python.version ?? '3.12'} · ${bytes(python.bytes)} / ${bytes(python.totalBytes)}` : python.phase === 'verifying' ? '正在校验安装包…' : python.phase === 'extracting' ? '正在解压并验证 Python…' : '安装完成，正在检查…'}</p>
+                              {running ? <ProgressBar value={python.percent} /> : null}
+                            </div> : null}
                             {!done && step.sizeBytes ? <p className="mt-1 text-[9px] tabular-nums text-[var(--color-text-tertiary)]">约 {bytes(step.sizeBytes)}{taskTotal ? ` · 下载进度 ${Math.round(taskBytes / taskTotal * 100)}%` : ''}</p> : null}
                           </div>
-                          {!done ? <button type="button" aria-label={`前往配置${step.title}`} className="shrink-0 rounded-[4px] px-1.5 py-1 text-[10px] text-accent-300 hover:bg-white/[0.05]" onClick={() => dock(step)}>{docked ? '配置' : '前往配置'}<ChevronRight className="ml-0.5 inline size-3" /></button> : null}
+                          {!done ? <button type="button" aria-label={step.id === 'python' ? '安装内置 Python' : `前往配置${step.title}`} disabled={step.id === 'python' && Boolean(running)} className="shrink-0 rounded-[4px] px-1.5 py-1 text-[10px] text-accent-300 hover:bg-white/[0.05] disabled:opacity-50" onClick={() => dock(step)}>{step.id === 'python' ? running ? '安装中' : failed ? '重试安装' : '安装内置 Python' : docked ? '配置' : '前往配置'}<ChevronRight className="ml-0.5 inline size-3" /></button> : null}
                         </li>
                       })}
                     </ol>
