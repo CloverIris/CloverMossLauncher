@@ -1,9 +1,9 @@
 import { FolderOpen, Image as ImageIcon, Images, RefreshCw, Search, Sparkles, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Ipc } from '@shared/channels'
-import type { GalleryDetail, GalleryItem, GalleryPage } from '@shared/types'
-import { call } from '../lib/api'
+import { Ipc, Events } from '@shared/channels'
+import type { GalleryDetail, GalleryItem, GalleryPage, JobRecord } from '@shared/types'
+import { call, onEvent } from '../lib/api'
 import { cloverUrl } from '../lib/clover'
 import { openWindow } from '../lib/windows'
 import { bytes, dateTime, relative } from '../lib/format'
@@ -60,6 +60,19 @@ export function GalleryPage(): React.JSX.Element {
   useEffect(() => {
     void load(true, null, query)
   }, [load, query])
+
+  // New generation results land in the gallery roots; refresh when a job succeeds.
+  const queryRef = useRef(query)
+  useEffect(() => {
+    queryRef.current = query
+  }, [query])
+  useEffect(
+    () =>
+      onEvent<JobRecord>(Events.job, (job) => {
+        if (job.state === 'succeeded' && (job.outputs?.length ?? 0) > 0) void load(true, null, queryRef.current)
+      }),
+    [load],
+  )
 
   useEffect(() => {
     const element = sentinel.current

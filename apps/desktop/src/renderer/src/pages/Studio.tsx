@@ -141,7 +141,14 @@ function MiniGallery(): React.JSX.Element {
   const setStudioBackground = useApp((state) => state.setStudioBackground)
   const [items, setItems] = useState<GalleryItem[]>([])
   useEffect(() => {
-    void call<{ items: GalleryItem[] }>(Ipc.galleryList, { limit: 8 }).then((page) => setItems(page.items ?? [])).catch(() => undefined)
+    const reload = (): void => {
+      void call<{ items: GalleryItem[] }>(Ipc.galleryList, { limit: 8 }).then((page) => setItems(page.items ?? [])).catch(() => undefined)
+    }
+    reload()
+    // refresh thumbnails when a generation job succeeds
+    return onEvent<JobRecord>(Events.job, (job) => {
+      if (job.state === 'succeeded' && (job.outputs?.length ?? 0) > 0) reload()
+    })
   }, [])
   return (
     <div className="p-2">
