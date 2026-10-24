@@ -293,13 +293,19 @@ export function StudioPage(): React.JSX.Element {
   const [dragTab, setDragTab] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
-  const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const panRef = useRef<{ pointerId: number; buttons: number; x: number; y: number; ox: number; oy: number } | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    window.addEventListener('blur', endPan)
+    return () => window.removeEventListener('blur', endPan)
+  }, [])
   useEffect(() => {
     const element = viewportRef.current
     if (!element) return
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault()
+      if (panRef.current) return
       zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * 0.0012))
     }
     element.addEventListener('wheel', onWheel, { passive: false })
@@ -464,7 +470,6 @@ export function StudioPage(): React.JSX.Element {
   }
 
   function handlePointerUp(): void {
-    endPan()
     if (drawing) {
       const [x1, y1] = drawing.start
       const [x2, y2] = drawing.current
@@ -862,15 +867,40 @@ export function StudioPage(): React.JSX.Element {
   }
 
   function pickUpPan(event: React.PointerEvent<HTMLDivElement>): void {
-    if (tool !== 'pan') return
-    panRef.current = { x: event.clientX, y: event.clientY, ox: pan.x, oy: pan.y }
+    if (event.button !== 1 && !(tool === 'pan' && event.button === 0)) return
+    if (panRef.current || drawing || drag) return
+    if ((event.target as HTMLElement).closest('[data-studio-floating-panels]')) return
+    // Capture before canvas layers and their text fields can handle this gesture.
+    event.preventDefault()
+    event.stopPropagation()
+    panRef.current = { pointerId: event.pointerId, buttons: event.button === 1 ? 4 : 1, x: event.clientX, y: event.clientY, ox: pan.x, oy: pan.y }
+    setIsPanning(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   function movePan(event: React.PointerEvent<HTMLDivElement>): void {
-    if (!panRef.current) return
-    setPan({ x: panRef.current.ox + event.clientX - panRef.current.x, y: panRef.current.oy + event.clientY - panRef.current.y })
+    const gesture = panRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (!(event.buttons & gesture.buttons)) {
+      endPan()
+      return
+    }
+    setPan({ x: gesture.ox + event.clientX - gesture.x, y: gesture.oy + event.clientY - gesture.y })
   }
-  function endPan(): void { panRef.current = null }
+  function finishPan(event: React.PointerEvent<HTMLDivElement>): void {
+    if (panRef.current?.pointerId !== event.pointerId) return
+    event.stopPropagation()
+    endPan()
+  }
+  function endPan(): void {
+    const gesture = panRef.current
+    if (!gesture) return
+    panRef.current = null
+    setIsPanning(false)
+    const viewport = viewportRef.current
+    if (viewport?.hasPointerCapture(gesture.pointerId)) viewport.releasePointerCapture(gesture.pointerId)
+  }
   function panelStyle(id: PanelId): React.CSSProperties {
     const height = panelHeights[id]
     return height ? { flex: 'none', height } : { flex: '1 1 0%' }
@@ -1115,11 +1145,19 @@ export function StudioPage(): React.JSX.Element {
 
           <div
             ref={viewportRef}
-            className="relative min-h-0 flex-1 overflow-hidden bg-[#121419]"
+            data-pan-tool={tool === 'pan'}
+            data-panning={isPanning}
+            className="studio-viewport relative min-h-0 flex-1 overflow-hidden bg-[#121419]"
+            onPointerDownCapture={pickUpPan}
+            onPointerMoveCapture={movePan}
+            onPointerUpCapture={finishPan}
+            onPointerCancelCapture={finishPan}
+            onLostPointerCapture={finishPan}
+            onAuxClickCapture={(event) => { if (event.button === 1) event.preventDefault() }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => { const id = event.dataTransfer.getData('text/moss-panel') as PanelId; if (id) movePanel(id, 'float') }}
           >
-            <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="studio-canvas-content absolute inset-0 flex items-center justify-center p-4">
               <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} className="relative w-full max-w-[820px]">
                               <div
                 ref={canvasRef}
@@ -1220,7 +1258,7 @@ export function StudioPage(): React.JSX.Element {
               {Math.round(zoom * 100)}% · 滚轮缩放 · 手型/中键拖动
             </div>
             {docks.float.length > 0 ? (
-              <div className="absolute right-2 top-2 z-20 flex max-h-[82%] w-[290px] flex-col gap-2 overflow-y-auto">
+              <div data-studio-floating-panels className="absolute right-2 top-2 z-20 flex max-h-[82%] w-[290px] flex-col gap-2 overflow-y-auto">
                 {docks.float.map((id) => (
                   <div key={id} className="min-h-[160px] min-w-[220px] resize overflow-auto" style={{ width: 320, height: id === 'agent' ? 360 : 300 }}>
                     <DockPanel id={id} dock="float" onDock={movePanel} style={{ height: '100%', minHeight: 160 }} title={PANEL_TITLES[id]}>

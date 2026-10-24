@@ -91,6 +91,16 @@ body {
   background: transparent;
 }
 
+.studio-viewport[data-pan-tool="true"][data-panning="false"],
+.studio-viewport[data-pan-tool="true"][data-panning="false"] > .studio-canvas-content * {
+  cursor: grab !important;
+}
+
+.studio-viewport[data-panning="true"],
+.studio-viewport[data-panning="true"] * {
+  cursor: grabbing !important;
+}
+
 /* Front-end frosted glass is the only material path. Native macOS vibrancy
    and Windows backgroundMaterial are intentionally not used: Windows 10 does
    not reliably provide system acrylic. Thin: titlebar/sidebar. */
